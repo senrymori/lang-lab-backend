@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     # the tutor for learners, a model per mode (chosen by blind-judged runs); Claude stays for development
     tutor_provider: str = "openai"
     model_learn: str = "gpt-6.1-sol"
-    model_placement: str = "gpt-6-luna"
+    model_placement: str = "gpt-6.1-sol"
     # the server's own key: a project allowed only these models, with a hard monthly limit
     openai_key: str | None = None
     openai_key_file: Path = Path.home() / ".config" / "lp" / "openai_server.key"

@@ -26,6 +26,7 @@ services:
       LANGLAB_DATA_DIR: /data/learners
       LANGLAB_RECORDINGS_DIR: /data/recordings
       LANGLAB_PUBLIC_URL: https://api.langlab.uk
+      LANGLAB_DOWNLOAD_URL: https://langlab.uk/download  # the Mac app, for the invite letter (R2 behind the site's worker)
       LANGLAB_BEHIND_CLOUDFLARE: "true"
       LANGLAB_MAIL_BACKEND: resend
       LANGLAB_ADMIN_UI_DIR: /srv/admin

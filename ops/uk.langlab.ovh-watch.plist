@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- OVH stock watcher every 10 minutes. Install:
+       sed "s|__REPO__|$PWD|; s|__TO__|you@example.com|" ops/uk.langlab.ovh-watch.plist > ~/Library/LaunchAgents/uk.langlab.ovh-watch.plist
+       launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/uk.langlab.ovh-watch.plist
+     Remove: launchctl bootout gui/$(id -u)/uk.langlab.ovh-watch && rm ~/Library/LaunchAgents/uk.langlab.ovh-watch.plist -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>uk.langlab.ovh-watch</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>__REPO__/ops/ovh_watch.py</string>
+    <string>--to</string>
+    <string>__TO__</string>
+  </array>
+  <key>StartInterval</key><integer>600</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardErrorPath</key><string>/tmp/langlab-ovh-watch.err</string>
+</dict>
+</plist>

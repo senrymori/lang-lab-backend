@@ -32,3 +32,13 @@ def test_voiced_lines_unused_for_a_week_go(tmp_path, monkeypatch):
     assert lp.tutor._reuse("b.wav")  # asked for again: touched
     assert cleanup.sweep() == 1
     assert used.exists() and not old.exists() and (tmp_path / "media").is_dir()
+
+
+def test_the_network_guard_holds():
+    import socket
+    import pytest
+    from tests.conftest import NetworkBlocked
+    s = socket.socket()
+    with pytest.raises(NetworkBlocked):
+        s.connect(("api.openai.com", 443))
+    s.close()

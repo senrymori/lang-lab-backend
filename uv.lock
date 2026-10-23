@@ -667,6 +667,13 @@ requires-dist = [
     { name = "wordfreq", specifier = ">=3.1" },
 ]
 
+[package.metadata.requires-dev]
+dev = [
+    { name = "httpx", specifier = ">=0.28" },
+    { name = "pytest", specifier = ">=8.3" },
+    { name = "pytest-asyncio", specifier = ">=0.24" },
+]
+
 [[package]]
 name = "mako"
 version = "1.4.3"

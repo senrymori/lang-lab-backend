@@ -30,6 +30,8 @@ services:
       LANGLAB_MAIL_BACKEND: resend
       LANGLAB_ADMIN_UI_DIR: /srv/admin
       LANGLAB_ADMIN_HOST: admin.langlab.uk
+      # sign in with Google: the OAuth client of the Google Cloud project «Language Lab» (its secret is in keys/)
+      LANGLAB_GOOGLE_CLIENT_ID: 46595039357-78vh05f7h1od5b0un23fu9j0nsnmjedi.apps.googleusercontent.com
     volumes:
       - data:/data
       - /opt/langlab/lang-lab-admin/dist:/srv/admin:ro  # the admin page, built on the Mac by deploy.sh

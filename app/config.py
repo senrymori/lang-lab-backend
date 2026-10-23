@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     # speech recognition (Gemini, paid tier: the free one trains on what it's sent)
     gemini_key: str | None = None
     gemini_key_file: Path = Path.home() / ".config" / "lp" / "gemini.key"
+    # sign in with Google (app/google.py): a Web OAuth client whose redirect URI is <public_url>/auth/google/callback
+    google_client_id: str = ""
+    google_client_secret: str | None = None
+    google_client_secret_file: Path = Path.home() / ".config" / "lp" / "google_client_secret.key"
     # the admin's API (app/admin.py): off without a key
     admin_key: str | None = None
     admin_key_file: Path = Path.home() / ".config" / "lp" / "admin.key"

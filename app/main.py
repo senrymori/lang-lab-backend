@@ -14,7 +14,7 @@ hosting.configure()  # before lp is imported anywhere
 from fastapi import FastAPI  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
-from . import admin, auth, cleanup  # noqa: E402
+from . import admin, auth, cleanup, google  # noqa: E402
 from .config import settings  # noqa: E402
 from .db import engine, stop_dev_db  # noqa: E402
 
@@ -52,6 +52,7 @@ async def admin_only_on_its_host(request, call_next):
             return RedirectResponse("/admin/")
     return await call_next(request)
 app.include_router(auth.router)
+app.include_router(google.router)
 app.include_router(admin.router)
 
 

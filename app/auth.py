@@ -91,6 +91,9 @@ padding:12px 28px;border-radius:14px;font-weight:600;font-size:16px">Войти<
     return subject, text, html_
 
 
+APP_LINK = "langlab://signed-in"  # the desktop app's scheme (lp desktop/main.js); it carries nothing secret
+
+
 def _page(title: str, body: str) -> HTMLResponse:
     return HTMLResponse(f"""<!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>{title} — Language Lab</title>
@@ -100,8 +103,8 @@ body{{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:
 color:var(--text);font:16px/1.5 Inter,-apple-system,Segoe UI,Roboto,sans-serif}}
 .card{{background:var(--card);border-radius:14px;padding:32px;margin:16px;max-width:400px;text-align:center}}
 h1{{font-size:22px;margin:0 0 12px}} p{{color:var(--muted);margin:0 0 20px}}
-button{{background:var(--accent);color:#fff;border:0;border-radius:14px;padding:12px 32px;font:600 16px Inter,
-sans-serif;cursor:pointer}}
+button,a.btn{{display:inline-block;background:var(--accent);color:#fff;border:0;border-radius:14px;padding:12px 32px;
+font:600 16px Inter,sans-serif;cursor:pointer;text-decoration:none}}
 </style></head><body><div class="card"><h1>{title}</h1>{body}</div></body></html>""")
 
 
@@ -186,8 +189,9 @@ async def link_confirm(t: str = Form(""), s: AsyncSession = Depends(get_db)):
                                  LoginRequest.approved_at.is_(None), LoginRequest.expires_at > now)
                           .values(approved_at=now).returning(LoginRequest.id))).first()
     await s.commit()
-    if ok:
-        return _page("Готово", "<p>Вернитесь в приложение Language Lab — вход выполнится сам.</p>")
+    if ok:  # the app's own link brings it to the front (or starts it), and it finishes signing in by itself
+        return _page("Готово", f"""<p>Открываем Language Lab — вход выполнится сам.</p>
+<a class="btn" href="{APP_LINK}">Открыть приложение</a><script>location.href = "{APP_LINK}"</script>""")
     r = (await s.execute(select(LoginRequest).where(LoginRequest.link == _hash(t)))).scalar_one_or_none()
     if r and r.approved_at:
         return _page("Вход уже подтверждён", "<p>Вернитесь в приложение Language Lab.</p>")

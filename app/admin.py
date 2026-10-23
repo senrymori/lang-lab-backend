@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from . import codes
 from .config import settings
 from .db import get_db
-from .models import AccessCode, AuthSession, Learner, Spend
+from .models import AccessCode, AuthSession, Learner, Spend, SpendAlert
 
 
 def _key() -> str:
@@ -62,17 +62,19 @@ async def learners(s: AsyncSession = Depends(get_db)):
     seen = select(AuthSession.learner_id, func.max(AuthSession.last_seen_at).label("seen")) \
         .group_by(AuthSession.learner_id).subquery()
     spend = select(Spend.learner_id, func.sum(Spend.usd).filter(Spend.day == _today()).label("today"),
-                   func.sum(Spend.usd).label("d30")).where(Spend.day >= since).group_by(Spend.learner_id).subquery()
+                   func.sum(Spend.usd).filter(Spend.day >= since).label("d30"), func.sum(Spend.usd).label("total")) \
+        .group_by(Spend.learner_id).subquery()
     rows = (await s.execute(
-        select(Learner, seen.c.seen, spend.c.today, spend.c.d30)
+        select(Learner, seen.c.seen, spend.c.today, spend.c.d30, spend.c.total)
         .outerjoin(seen, seen.c.learner_id == Learner.id).outerjoin(spend, spend.c.learner_id == Learner.id)
         .order_by(Learner.created_at))).all()
     from lp import server
     live = {k.split("/")[0]: s_.mode for k, s_ in server.sessions.items()}
     return [{"id": str(l.id), "email": l.email, "name": l.name, "status": l.status, "code": l.code,
              "lessons_total": l.lessons_total, "lessons_used": l.lessons_used, "access_until": l.access_until, "created_at": l.created_at, "last_seen_at": seen_at,
-             "spent_today_usd": float(today or 0), "spent_30d_usd": float(d30 or 0), "live": live.get(str(l.id))}
-            for l, seen_at, today, d30 in rows]
+             "spent_today_usd": float(today or 0), "spent_30d_usd": float(d30 or 0), "spent_total_usd": float(total or 0),
+             "blocked_reason": l.blocked_reason, "blocked_at": l.blocked_at, "live": live.get(str(l.id))}
+            for l, seen_at, today, d30, total in rows]
 
 
 class LearnerChange(BaseModel):
@@ -92,6 +94,7 @@ async def change_learner(lid: uuid.UUID, body: LearnerChange, s: AsyncSession = 
         l.name = body.name.strip()
     if body.status:
         l.status = body.status
+        l.blocked_reason, l.blocked_at = ("вручную", _now()) if body.status == "blocked" else ("", None)
         if body.status == "blocked":  # signed out everywhere, and a lesson going now stops
             await s.execute(update(AuthSession).where(AuthSession.learner_id == lid, AuthSession.revoked_at.is_(None))
                             .values(revoked_at=_now()))
@@ -148,3 +151,13 @@ async def spend(days: int = 30, s: AsyncSession = Depends(get_db)):
     rows = (await s.execute(select(Spend.day, func.sum(Spend.usd), func.sum(Spend.calls))
                             .where(Spend.day >= since).group_by(Spend.day).order_by(Spend.day))).all()
     return [{"day": d, "usd": float(u), "calls": int(n)} for d, u, n in rows]
+
+
+@router.get("/alerts")
+async def alerts(limit: int = 50, s: AsyncSession = Depends(get_db)):
+    """Sessions that spent too fast, newest first, with what the model reading them decided (app/abuse.py)."""
+    rows = (await s.execute(select(SpendAlert, Learner.name, Learner.email).join(Learner)
+                            .order_by(SpendAlert.created_at.desc()).limit(max(1, min(limit, 500))))).all()
+    return [{"id": a.id, "learner_id": str(a.learner_id), "name": name, "email": email, "sid": a.sid, "lang": a.lang,
+             "usd_by_window": a.usd_by_window, "session_usd": float(a.session_usd), "verdict": a.verdict,
+             "reason": a.reason, "created_at": a.created_at} for a, name, email in rows]

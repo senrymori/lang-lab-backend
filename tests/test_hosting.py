@@ -122,10 +122,17 @@ async def test_a_lesson_is_used_as_it_starts_placement_is_free(no_tutor, monkeyp
         assert (await c.post("/api/session/en/start", json={"mode": "learn"})).status_code == 200
 
 
-async def test_spend_is_booked_and_never_stops_a_session():
+async def test_spend_is_booked_and_never_stops_a_session(monkeypatch):
+    """Money alone stops nothing: only a model reading the session as spam does (tests/test_abuse.py)."""
     from types import SimpleNamespace
+
+    from app import abuse
+
+    async def a_lesson(S, sums):
+        return {"spam": False, "reason": "урок"}
+    monkeypatch.setattr(abuse, "_review", a_lesson)
     _, l = await learner("Илья")
-    S = SimpleNamespace(user=str(l.id))
+    S = SimpleNamespace(user=str(l.id), sid="booked", lang="en")
     await hosting.check(S)
     await hosting.book(S, 0.4)
     await hosting.book(S, 0.6)

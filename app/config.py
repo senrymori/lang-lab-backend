@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     # nothing but the admin. None (dev) — no split
     admin_host: str | None = None
 
+    # spam that burns tokens, inside one live session (app/abuse.py): spend over any (minutes, USD) window
+    # gets the session read by a model; after an "ok" it is read again only past this much more spend
+    spike_windows: list[tuple[int, float]] = [(20, 2.0), (60, 4.0)]
+    spike_recheck_usd: float = 2.0
+    spike_review_model: str = "gpt-6.1-sol"
     # abuse limits, enforced by the server whatever the client does
     audio_max_seconds: int = 120
     upload_max_mb: float = 10

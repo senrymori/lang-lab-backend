@@ -14,7 +14,7 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from starlette.requests import HTTPConnection
 
-from . import auth
+from . import abuse, auth
 from .config import settings
 from .db import sessionmaker
 from .models import Learner, Spend
@@ -92,10 +92,12 @@ async def guard(lang: str, mode: str) -> None:
 
 
 async def check(S) -> None:
-    """Before every model call of a session: no spend cap here (lp's own is the developer's), lessons are the limit."""
+    """Before every model call of a session: no spend cap (lessons are the limit), only spam (app/abuse.py)."""
+    await abuse.watch(S)
 
 
 async def book(S, usd: float) -> None:
+    abuse.note(S, usd)
     stmt = insert(Spend).values(learner_id=uuid.UUID(S.user), day=_today(), usd=usd, calls=1)
     stmt = stmt.on_conflict_do_update(index_elements=[Spend.learner_id, Spend.day],
                                       set_={"usd": Spend.usd + stmt.excluded.usd, "calls": Spend.calls + 1})

@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, func
+from sqlalchemy import JSON, Date, DateTime, ForeignKey, Integer, Numeric, String, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -25,6 +25,8 @@ class Learner(Base):
     # optionally also a date (none — no end); kept for paid periods later
     access_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(16), default="active")  # active | blocked
+    blocked_reason: Mapped[str] = mapped_column(String(500), default="", server_default="")  # "авто: …" from app/abuse.py
+    blocked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     code: Mapped[str | None] = mapped_column(ForeignKey("access_codes.code"))  # the code they joined with
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -47,13 +49,28 @@ class AccessCode(Base):
 
 
 class Spend(Base):
-    """Model spend per learner and day: the daily budget is checked against it, the admin sees it."""
+    """Model spend per learner and day, for the admin."""
     __tablename__ = "spend"
 
     learner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("learners.id"), primary_key=True)
     day: Mapped[date] = mapped_column(Date, primary_key=True)
     usd: Mapped[float] = mapped_column(Numeric(10, 4), default=0)
     calls: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class SpendAlert(Base):
+    """One session spending too fast, and what the model reading it decided (app/abuse.py)."""
+    __tablename__ = "spend_alerts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    learner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("learners.id"), index=True)
+    sid: Mapped[str] = mapped_column(String(80))
+    lang: Mapped[str] = mapped_column(String(8))
+    usd_by_window: Mapped[dict] = mapped_column(JSON)  # {"20": 2.1, "60": 2.4}: minutes → USD
+    session_usd: Mapped[float] = mapped_column(Numeric(10, 4))
+    verdict: Mapped[str] = mapped_column(String(8))  # spam | ok | error
+    reason: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
 
 class LoginRequest(Base):

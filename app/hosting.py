@@ -33,7 +33,7 @@ def configure() -> None:
         "LP_TUTOR_MODEL_PLACEMENT": settings.model_placement,
         "LP_AUDIO_MAX_SECONDS": str(settings.audio_max_seconds), "LP_UPLOAD_MAX_MB": str(settings.upload_max_mb),
         "LP_TEXT_MAX_CHARS": str(settings.text_max_chars),
-        "LP_MESSAGES_PER_MINUTE": str(settings.messages_per_minute),
+        "LP_MESSAGES_PER_MINUTE": str(settings.messages_per_minute), "LP_UNANSWERED_MAX": str(settings.unanswered_max),
         "LP_HEAR_PER_MINUTE": str(settings.hear_per_minute), "LP_SAY_PER_MINUTE": str(settings.say_per_minute),
     }
     f = settings.openai_key_file

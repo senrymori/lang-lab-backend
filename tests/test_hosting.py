@@ -273,3 +273,33 @@ async def test_profile_fields_have_a_limit_and_the_tutor_s_additions_are_retold(
     out = await lp.tutor.save_learner_fields(None, {"interests": "старое\n" * 200 + "новое"})
     assert len(out["interests"]) <= lp.core.LEARNER_MAX and out["interests"].endswith("новое")
     assert not out["interests"].startswith("тарое")  # cut at a line, not mid-word
+
+
+async def test_three_own_messages_unanswered_and_the_learner_waits_for_the_tutor(no_tutor, monkeypatch):
+    import lp.server
+    import lp.tutor
+    monkeypatch.setattr(lp.tutor, "UNANSWERED_MAX", 3)
+    token, l = await learner("Болтушка")
+    async with client(token) as c:
+        p = await lesson_pass(c, l)
+        s = lp.server.sessions[f"{l.id}/en"]
+        for n in range(3):
+            assert not s.held()
+            await s.user_message(f"привет {n}")
+        assert s.held()
+        r = await c.post("/api/voice/en", files={"file": ("a.webm", wav(1), "audio/webm")}, headers={"X-LP-Pass": p})
+        assert r.status_code == 429 and "Дождитесь" in r.json()["detail"]
+        await s.emit({"type": "filler", "text": "думаю"}, keep=False)  # not an answer
+        assert s.held()
+        await s.emit({"type": "tutor", "text": "Отвечаю"})
+        assert not s.held()
+        await s.emit({"type": "user", "text": "ответ на задание"})  # answers to its tasks aren't counted
+        assert s.unanswered == 0
+        for n in range(3):
+            await s.user_message(f"ещё {n}")
+        await s.emit({"type": "status", "state": "idle"}, keep=False)  # its messages still wait in the inbox
+        assert s.held()
+        while not s.inbox.empty():
+            s.inbox.get_nowait()
+        await s.emit({"type": "status", "state": "idle"}, keep=False)  # the tutor took them all, showed nothing
+        assert not s.held()

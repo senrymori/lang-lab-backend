@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     upload_max_mb: float = 10
     text_max_chars: int = 2000
     messages_per_minute: int = 20  # to the tutor, per lesson
+    unanswered_max: int = 3  # the learner's own messages in a row the tutor hasn't answered; then they wait for it
     hear_per_minute: int = 12  # speech recognitions per learner (answers, voice notes, games)
     say_per_minute: int = 60  # lines voiced for a game per learner (the same line again is a file already made)
 

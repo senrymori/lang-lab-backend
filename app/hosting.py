@@ -39,6 +39,9 @@ def configure() -> None:
     key = settings.openai_key or (f.read_text().strip() if f.is_file() else "")
     if key:  # without it lp falls back to the developer's own key: fine on this Mac, never on the server
         env["OPENAI_API_KEY"] = key
+    f = settings.gemini_key_file
+    if key := settings.gemini_key or (f.read_text().strip() if f.is_file() else ""):
+        env["GEMINI_API_KEY"] = key
     os.environ.update(env)
 
 

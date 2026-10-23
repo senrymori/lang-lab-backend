@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     # the server's own key: a project allowed only these models, with a hard monthly limit
     openai_key: str | None = None
     openai_key_file: Path = Path.home() / ".config" / "lp" / "openai_server.key"
+    # speech recognition (Gemini, paid tier: the free one trains on what it's sent)
+    gemini_key: str | None = None
+    gemini_key_file: Path = Path.home() / ".config" / "lp" / "gemini.key"
 
     # per learner and day (UTC): no new lesson or placement past the budget; a session already going may
     # finish on the grace, then it stops

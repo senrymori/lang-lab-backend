@@ -3,7 +3,7 @@
 # kept 14 days on the server and copied to Cloudflare R2 once its rclone remote "r2" is set up in
 # /etc/langlab/rclone.conf (provider Cloudflare, list_version = 2; the R2 token allows only this bucket
 # and the server's IPv4 and IPv6 — it reaches R2 over IPv6). Voice recordings aren't backed up: they live a week anyway (app/cleanup.py).
-#   install: sudo ln -sf /opt/langlab/lang-lab-backend/ops/langlab-backup.cron /etc/cron.d/langlab-backup
+#   install: sudo install -o root -m 644 /opt/langlab/lang-lab-backend/ops/langlab-backup.cron /etc/cron.d/langlab-backup
 set -euo pipefail
 umask 077  # the dumps hold learners' addresses
 cd /opt/langlab/lang-lab-backend/ops

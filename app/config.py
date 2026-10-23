@@ -55,10 +55,6 @@ class Settings(BaseSettings):
     # nothing but the admin. None (dev) — no split
     admin_host: str | None = None
 
-    # per learner and day (UTC): no new lesson or placement past the budget; a session already going may
-    # finish on the grace, then it stops
-    daily_budget_usd: float = 1.5
-    budget_grace_usd: float = 0.5
     # abuse limits, enforced by the server whatever the client does
     audio_max_seconds: int = 120
     upload_max_mb: float = 10

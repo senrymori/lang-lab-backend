@@ -53,8 +53,7 @@ async def overview(s: AsyncSession = Depends(get_db)):
     today, this_month = (await s.scalar(total(_today()))), (await s.scalar(total(month)))
     from lp import server
     return {"learners": {k: n for k, n in learners}, "max_learners": settings.max_learners,
-            "spent_today_usd": float(today), "spent_month_usd": float(this_month),
-            "daily_budget_usd": settings.daily_budget_usd, "live_lessons": len(server.sessions)}
+            "spent_today_usd": float(today), "spent_month_usd": float(this_month), "live_lessons": len(server.sessions)}
 
 
 @router.get("/learners")

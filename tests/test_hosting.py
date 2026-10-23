@@ -86,19 +86,12 @@ async def test_workshop_and_sync_are_not_for_learners():
             assert (await c.request(method, path, json={})).status_code == 404, path
 
 
-async def test_session_needs_access_and_budget(no_tutor):
+async def test_session_needs_access(no_tutor):
     token, l = await learner("Егор")
     async with client(token) as c:
         assert (await c.post("/api/session/en/start", json={"mode": "../../etc"})).status_code == 400
         r = await c.post("/api/session/en/start", json={"mode": "placement"})
         assert r.status_code == 200 and r.json()["resumed"] is False
-
-    token, l = await learner("Жанна")
-    from types import SimpleNamespace
-    await hosting.book(SimpleNamespace(user=str(l.id)), settings.daily_budget_usd)
-    async with client(token) as c:
-        r = await c.post("/api/session/en/start", json={"mode": "learn"})
-        assert r.status_code == 429 and "лимит" in r.json()["detail"]
 
     token, l = await learner("Зоя")
     async with sessionmaker()() as s:
@@ -129,7 +122,7 @@ async def test_a_lesson_is_used_as_it_starts_placement_is_free(no_tutor, monkeyp
         assert (await c.post("/api/session/en/start", json={"mode": "learn"})).status_code == 200
 
 
-async def test_spend_is_booked_and_stops_a_session_past_the_grace():
+async def test_spend_is_booked_and_never_stops_a_session():
     from types import SimpleNamespace
     _, l = await learner("Илья")
     S = SimpleNamespace(user=str(l.id))
@@ -137,10 +130,8 @@ async def test_spend_is_booked_and_stops_a_session_past_the_grace():
     await hosting.book(S, 0.4)
     await hosting.book(S, 0.6)
     assert await hosting.spent_today(l.id) == pytest.approx(1.0)
-    await hosting.check(S)  # under budget + grace
-    await hosting.book(S, settings.daily_budget_usd + settings.budget_grace_usd)
-    with pytest.raises(RuntimeError, match="лимит"):
-        await hosting.check(S)
+    await hosting.book(S, 100)
+    await hosting.check(S)
 
 
 async def test_a_recording_too_long_is_refused(monkeypatch):

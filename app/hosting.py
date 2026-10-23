@@ -1,7 +1,7 @@
 """The learning core (`lp`) for every learner: its page, API, WebSocket and tutor sessions, served here
 under this server's sign-in. lp runs hosted (LP_HOSTED): a learner is an account here and their files
-sit in data_dir/<learner id>; the models per mode, the limits and each learner's daily budget come from
-settings. `configure()` runs before anything imports lp — lp reads its environment at import."""
+sit in data_dir/<learner id>; the models per mode and the limits come from settings;
+how much a learner uses is capped by their lessons alone. `configure()` runs before anything imports lp — lp reads its environment at import."""
 from __future__ import annotations
 
 import os
@@ -81,8 +81,6 @@ async def guard(lang: str, mode: str) -> None:
         raise HTTPException(401, "Войдите заново")
     if not auth.learner_json(learner)["access"]:
         raise HTTPException(403, "Доступ закончился — напишите нам, чтобы продлить")
-    if await spent_today(learner.id) >= settings.daily_budget_usd:
-        raise HTTPException(429, "На сегодня занятия закончились: дневной лимит исчерпан. Продолжим завтра")
     if mode == "learn":  # a lesson is used as it starts (placement is free); one atomic step, so two at once can't both pass
         async with sessionmaker()() as s:
             used = (await s.execute(update(Learner).where(Learner.id == learner.id,
@@ -94,9 +92,7 @@ async def guard(lang: str, mode: str) -> None:
 
 
 async def check(S) -> None:
-    """Before every model call of a session: a session already going finishes on the grace, then stops."""
-    if await spent_today(uuid.UUID(S.user)) >= settings.daily_budget_usd + settings.budget_grace_usd:
-        raise RuntimeError("на сегодня лимит занятий исчерпан — продолжим завтра")
+    """Before every model call of a session: no spend cap here (lp's own is the developer's), lessons are the limit."""
 
 
 async def book(S, usd: float) -> None:

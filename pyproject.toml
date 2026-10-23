@@ -13,6 +13,7 @@ dependencies = [
     "pydantic-settings>=2.6.1",
     "httpx>=0.28.1",
     "python-multipart>=0.0.32",
+    "torch>=2.4",  # lp's; named here so the CPU build below applies on Linux
 ]
 
 [dependency-groups]
@@ -24,6 +25,13 @@ package = false
 [tool.uv.sources]
 # the learner model, practice, games, Kazakh tools, prompts: one core for the desktop app and the server
 lp = { path = "../learning-lang-platform", editable = true }
+# on the server (Linux) torch without CUDA: no GPU there, and the CUDA build is gigabytes
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

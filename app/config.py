@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     # learner data as the desktop app keeps it (events, notes, practice), one folder per learner
     data_dir: Path = ROOT / "var" / "data"
     recordings_dir: Path = ROOT / "var" / "recordings"
+    recordings_keep_days: int = 7  # voice recordings are deleted after this (app/cleanup.py)
 
     # where the server is reached from outside: links in letters point here
     public_url: str = "http://127.0.0.1:8000"
@@ -46,6 +47,9 @@ class Settings(BaseSettings):
     # speech recognition (Gemini, paid tier: the free one trains on what it's sent)
     gemini_key: str | None = None
     gemini_key_file: Path = Path.home() / ".config" / "lp" / "gemini.key"
+    # the admin's API (app/admin.py): off without a key
+    admin_key: str | None = None
+    admin_key_file: Path = Path.home() / ".config" / "lp" / "admin.key"
 
     # per learner and day (UTC): no new lesson or placement past the budget; a session already going may
     # finish on the grace, then it stops

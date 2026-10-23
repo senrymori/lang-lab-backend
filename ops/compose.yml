@@ -1,0 +1,48 @@
+# The server: Postgres, the app, and a Cloudflare tunnel in front (no open ports; HTTPS is Cloudflare's).
+# On the server everything lives in /opt/langlab; secrets in /etc/langlab (env + keys/), never in the repos.
+#   cd /opt/langlab/lang-lab-backend/ops && docker compose up -d --build
+name: langlab
+
+services:
+  db:
+    image: postgres:17.6
+    restart: unless-stopped
+    env_file: /etc/langlab/env  # POSTGRES_PASSWORD
+    environment:
+      POSTGRES_USER: langlab
+      POSTGRES_DB: langlab
+    volumes: [pg:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "langlab"]
+      interval: 5s
+      retries: 20
+
+  app:
+    build: {context: ../.., dockerfile: lang-lab-backend/ops/Dockerfile}
+    restart: unless-stopped
+    depends_on: {db: {condition: service_healthy}}
+    env_file: /etc/langlab/env  # LANGLAB_DATABASE_URL with the same password
+    environment:
+      LANGLAB_DATA_DIR: /data/learners
+      LANGLAB_RECORDINGS_DIR: /data/recordings
+      LANGLAB_PUBLIC_URL: https://api.langlab.uk
+      LANGLAB_BEHIND_CLOUDFLARE: "true"
+      LANGLAB_MAIL_BACKEND: resend
+    volumes:
+      - data:/data
+      - cache:/root/.cache  # models, TTS and song caches; first filled from the image
+      - /etc/langlab/keys:/root/.config/lp:ro  # openai_server, gemini, resend, azure_speech
+    ports: ["127.0.0.1:8000:8000"]  # for checks from the server itself; the world comes through the tunnel
+
+  tunnel:
+    image: cloudflare/cloudflared:2025.10.0
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    env_file: /etc/langlab/env  # TUNNEL_TOKEN
+    depends_on: [app]
+    profiles: [tunnel]  # until the tunnel exists: docker compose --profile tunnel up -d
+
+volumes:
+  pg:
+  data:
+  cache:

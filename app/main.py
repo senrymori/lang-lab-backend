@@ -4,6 +4,7 @@ Its own routes (sign-in, /me, /health) come first; everything else is the learni
 the page, its API, the tutor's WebSocket), mounted at the root under this server's sign-in."""
 from __future__ import annotations
 
+import asyncio
 import contextlib
 
 from . import hosting
@@ -13,7 +14,7 @@ hosting.configure()  # before lp is imported anywhere
 from fastapi import FastAPI  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
-from . import auth  # noqa: E402
+from . import admin, auth, cleanup  # noqa: E402
 from .config import settings  # noqa: E402
 from .db import engine, stop_dev_db  # noqa: E402
 
@@ -25,7 +26,9 @@ async def lifespan(app: FastAPI):
     from lp.tutor import MEDIA
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     MEDIA.mkdir(parents=True, exist_ok=True)
+    sweeper = asyncio.create_task(cleanup.every())
     yield
+    sweeper.cancel()
     for s in server.sessions.values():
         if s.task:
             s.task.cancel()
@@ -35,6 +38,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Language Lab", lifespan=lifespan)
 app.include_router(auth.router)
+app.include_router(admin.router)
 
 
 @app.get("/health")

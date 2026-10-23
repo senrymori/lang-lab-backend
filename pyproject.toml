@@ -1,0 +1,28 @@
+[project]
+name = "langlab-backend"
+version = "0.1.0"
+description = "Language Lab server: accounts and access, the tutor and practice for every learner"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "lp",
+    "fastapi>=0.143.0",
+    "uvicorn[standard]>=0.54.0",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "psycopg[binary]>=3.2.3",
+    "alembic>=1.14.0",
+    "pydantic-settings>=2.6.1",
+]
+
+[dependency-groups]
+dev = ["pgserver>=0.1.4", "pytest>=8.3", "pytest-asyncio>=0.24", "httpx>=0.27"]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+# the learner model, practice, games, Kazakh tools, prompts: one core for the desktop app and the server
+lp = { path = "../learning-lang-platform", editable = true }
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"

@@ -6,7 +6,7 @@ set -euo pipefail
 HOST=${1:-ubuntu@54.39.111.101}
 KEY=~/.ssh/langlab_ed25519
 HERE=$(cd "$(dirname "$0")/.." && pwd)
-LP=$(cd "$HERE/../learning-lang-platform" && pwd)
+LP=$(cd "$HERE/../lang-lab-platform" && pwd)
 
 ADMIN="$HERE/../lang-lab-admin"
 (cd "$ADMIN" && npm ci --no-audit --no-fund --silent && npm run build --silent)

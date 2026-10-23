@@ -11,8 +11,8 @@ ENV UV_PROJECT_ENVIRONMENT=/venv UV_LINK_MODE=copy UV_COMPILE_BYTECODE=1 UV_NO_C
     HF_HOME=/root/.cache/huggingface PYTHONUNBUFFERED=1
 
 # dependencies first, so a code change doesn't reinstall them
-COPY learning-lang-platform/pyproject.toml learning-lang-platform/README.md /srv/learning-lang-platform/
-COPY learning-lang-platform/lp/__init__.py /srv/learning-lang-platform/lp/__init__.py
+COPY lang-lab-platform/pyproject.toml lang-lab-platform/README.md /srv/lang-lab-platform/
+COPY lang-lab-platform/lp/__init__.py /srv/lang-lab-platform/lp/__init__.py
 COPY lang-lab-backend/pyproject.toml lang-lab-backend/uv.lock /srv/lang-lab-backend/
 WORKDIR /srv/lang-lab-backend
 RUN uv sync --frozen --no-dev --no-install-project
@@ -29,7 +29,7 @@ RUN mkdir -p /root/.cache/lp/piper \
     && python -c "from transformers import AutoProcessor, AutoModelForCTC as M; \
 [(AutoProcessor.from_pretrained(m), M.from_pretrained(m)) for m in ('facebook/wav2vec2-lv-60-espeak-cv-ft', 'aismlv/wav2vec2-large-xlsr-kazakh')]"
 
-COPY learning-lang-platform /srv/learning-lang-platform
+COPY lang-lab-platform /srv/lang-lab-platform
 COPY lang-lab-backend /srv/lang-lab-backend
 RUN uv sync --frozen --no-dev
 

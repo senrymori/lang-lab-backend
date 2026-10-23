@@ -24,7 +24,7 @@ package = false
 
 [tool.uv.sources]
 # the learner model, practice, games, Kazakh tools, prompts: one core for the desktop app and the server
-lp = { path = "../learning-lang-platform", editable = true }
+lp = { path = "../lang-lab-platform", editable = true }
 # on the server (Linux) torch without CUDA: no GPU there, and the CUDA build is gigabytes
 torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
 

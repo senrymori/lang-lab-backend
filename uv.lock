@@ -598,7 +598,7 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.14.0" },
     { name = "fastapi", specifier = ">=0.143.0" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "lp", editable = "../learning-lang-platform" },
+    { name = "lp", editable = "../lang-lab-platform" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2.3" },
     { name = "pydantic-settings", specifier = ">=2.6.1" },
     { name = "python-multipart", specifier = ">=0.0.32" },
@@ -628,7 +628,7 @@ wheels = [
 [[package]]
 name = "lp"
 version = "0.1.0"
-source = { editable = "../learning-lang-platform" }
+source = { editable = "../lang-lab-platform" }
 dependencies = [
     { name = "claude-agent-sdk" },
     { name = "fastapi" },
@@ -670,6 +670,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "httpx", specifier = ">=0.28" },
+    { name = "playwright", specifier = "==1.63.0" },
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
 ]

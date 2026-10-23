@@ -22,7 +22,8 @@ def main(cmd: str) -> None:
         if r.returncode != 0:
             print("already stopped")
             return
-        subprocess.run([_pg_ctl(), "-D", str(DEV_PG), "stop", "-m", "fast"], check=True)
+        subprocess.run([_pg_ctl(), "-D", str(DEV_PG), "stop", "-m", "fast"], check=True,
+                       capture_output=True)  # stdout stays clean: scripts read codes from it
     else:
         subprocess.run([_pg_ctl(), "-D", str(DEV_PG), "status"])
 

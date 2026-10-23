@@ -42,3 +42,9 @@ def engine():
 @lru_cache
 def sessionmaker() -> async_sessionmaker[AsyncSession]:
     return async_sessionmaker(engine(), expire_on_commit=False)
+
+
+async def get_db():
+    """FastAPI dependency: a session per request."""
+    async with sessionmaker()() as s:
+        yield s

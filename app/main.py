@@ -6,6 +6,7 @@ import contextlib
 from fastapi import FastAPI
 from sqlalchemy import text
 
+from . import auth
 from .config import settings
 from .db import engine, stop_dev_db
 
@@ -19,6 +20,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Language Lab", lifespan=lifespan)
+app.include_router(auth.router)
 
 
 @app.get("/health")

@@ -16,6 +16,23 @@ class Settings(BaseSettings):
     # learner data as the desktop app keeps it (events, notes, practice), one folder per learner
     data_dir: Path = ROOT / "var" / "data"
 
+    # where the server is reached from outside: links in letters point here
+    public_url: str = "http://127.0.0.1:8000"
+    # behind Cloudflare the client's address comes in CF-Connecting-IP (sign-in limits count by it)
+    behind_cloudflare: bool = False
+
+    # letters: resend | console | memory (tests); auto — resend when a key is found, else console
+    mail_backend: str = "auto"
+    mail_from: str = "Language Lab <login@mail.langlab.uk>"
+    resend_key: str | None = None
+    resend_key_file: Path = Path.home() / ".config" / "lp" / "resend.key"
+
+    # sign-in: the link and code live this long; a device stays signed in this long after its last visit
+    login_minutes: int = 15
+    session_days: int = 180
+    login_per_email: int = 3  # letters per address within login_minutes
+    login_per_ip_hour: int = 20
+
     # beta: registration closes at this many learners
     max_learners: int = 10
     # the tutor for learners; Claude stays for development

@@ -50,3 +50,36 @@ class Spend(Base):
     day: Mapped[date] = mapped_column(Date, primary_key=True)
     usd: Mapped[float] = mapped_column(Numeric(10, 4), default=0)
     calls: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class LoginRequest(Base):
+    """One emailed sign-in (or registration). The app holds the request token, the letter holds the link
+    and the code; only their hashes are kept. `purpose` none — an address we don't know: no letter goes
+    out, but the app sees the same answer, so nobody learns who is registered."""
+    __tablename__ = "login_requests"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)  # sha256 of the app's request token
+    link: Mapped[str] = mapped_column(String(64), unique=True)  # sha256 of the link token
+    code: Mapped[str] = mapped_column(String(64))  # sha256 of id + the six digits
+    email: Mapped[str] = mapped_column(String(320), index=True)
+    purpose: Mapped[str] = mapped_column(String(10))  # login | register | none
+    name: Mapped[str] = mapped_column(String(80), default="")  # register: how to address them
+    access_code: Mapped[str | None] = mapped_column(String(40))  # register: spent only when confirmed
+    ip: Mapped[str] = mapped_column(String(64), default="", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)  # codes typed into the app
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # the link's button pressed
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # a session was issued
+
+
+class AuthSession(Base):
+    """A signed-in device: the app sends `Authorization: Bearer <token>`; only the token's hash is kept."""
+    __tablename__ = "sessions"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)  # sha256 of the token
+    learner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("learners.id"), index=True)
+    device: Mapped[str] = mapped_column(String(200), default="")  # User-Agent, for the admin and the learner
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

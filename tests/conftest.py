@@ -9,6 +9,7 @@ _tmp = pathlib.Path(tempfile.mkdtemp(prefix="langlab-test-"))
 _pg = pgserver.get_server(str(_tmp / "pg"), cleanup_mode="delete")
 os.environ["LANGLAB_DATABASE_URL"] = _pg.get_uri()
 os.environ["LANGLAB_DATA_DIR"] = str(_tmp / "data")
+os.environ["LANGLAB_MAIL_BACKEND"] = "memory"  # letters land in app.mail.outbox, nothing is sent
 os.environ["LP_DATA"] = str(_tmp / "lp")  # the learning core never writes real learner data in tests
 
 from alembic import command  # noqa: E402

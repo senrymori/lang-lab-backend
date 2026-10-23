@@ -46,6 +46,24 @@ async def create(s: AsyncSession, *, note: str, days: int, kind: str = "invite",
     return c
 
 
+BAD_CODE = "Код не подходит: неверный, уже использован или истёк"
+CLOSED = "Набор в бету закрыт: все места заняты"
+
+
+def _usable(code: str, now: datetime):
+    return (AccessCode.code == normalize(code), AccessCode.active.is_(True), AccessCode.used < AccessCode.max_uses,
+            (AccessCode.expires_at.is_(None)) | (AccessCode.expires_at > now))
+
+
+async def check(s: AsyncSession, code: str, *, new_learner: bool) -> None:
+    """Would `register` take this code now? Nothing is spent: the address is confirmed first, so a typo in
+    the email doesn't burn an invite."""
+    if (await s.execute(select(AccessCode.code).where(*_usable(code, datetime.now(timezone.utc))))).first() is None:
+        raise CodeError(BAD_CODE)
+    if new_learner and (await s.execute(select(func.count()).select_from(Learner))).scalar_one() >= settings.max_learners:
+        raise CodeError(CLOSED)
+
+
 async def register(s: AsyncSession, *, email: str, name: str, code: str) -> Learner:
     """A new learner with the access their code gives. One transaction: the cap is checked under a lock
     and the code is spent with a conditional UPDATE, so two people can't both use the last place or the
@@ -56,17 +74,15 @@ async def register(s: AsyncSession, *, email: str, name: str, code: str) -> Lear
         if (await s.execute(select(Learner).where(Learner.email == email))).scalar_one_or_none():
             raise CodeError("Этот адрес уже зарегистрирован — войдите по ссылке из письма")
         if (await s.execute(select(func.count()).select_from(Learner))).scalar_one() >= settings.max_learners:
-            raise CodeError("Набор в бету закрыт: все места заняты")
+            raise CodeError(CLOSED)
         now = datetime.now(timezone.utc)
         days = (await s.execute(
             update(AccessCode)
-            .where(AccessCode.code == normalize(code), AccessCode.active.is_(True),
-                   AccessCode.used < AccessCode.max_uses,
-                   (AccessCode.expires_at.is_(None)) | (AccessCode.expires_at > now))
+            .where(*_usable(code, now))
             .values(used=AccessCode.used + 1)
             .returning(AccessCode.days))).scalar_one_or_none()
         if days is None:
-            raise CodeError("Код не подходит: неверный, уже использован или истёк")
+            raise CodeError(BAD_CODE)
         learner = Learner(email=email, name=name.strip()[:80], code=normalize(code),
                           access_until=now + timedelta(days=days))
         s.add(learner)

@@ -16,3 +16,14 @@ from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402
 
 command.upgrade(Config(str(pathlib.Path(__file__).resolve().parent.parent / "alembic.ini")), "head")
+
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def roomy(monkeypatch):
+    """Every test registers learners into one database: the beta cap would close it midway (the cap has
+    its own test, which sets its own)."""
+    from app.config import settings
+    monkeypatch.setattr(settings, "max_learners", 1000)

@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     database_url: str | None = None
     # learner data as the desktop app keeps it (events, notes, practice), one folder per learner
     data_dir: Path = ROOT / "var" / "data"
+    recordings_dir: Path = ROOT / "var" / "recordings"
 
     # where the server is reached from outside: links in letters point here
     public_url: str = "http://127.0.0.1:8000"
@@ -35,13 +36,24 @@ class Settings(BaseSettings):
 
     # beta: registration closes at this many learners
     max_learners: int = 10
-    # the tutor for learners; Claude stays for development
+    # the tutor for learners, a model per mode (chosen by blind-judged runs); Claude stays for development
     tutor_provider: str = "openai"
-    tutor_model: str = "gpt-6.1-sol"
-    # abuse limits, enforced by the server whatever the client does
+    model_learn: str = "gpt-6.1-sol"
+    model_placement: str = "gpt-6-luna"
+    model_drill: str = "gpt-6.1-sol"
+    # the server's own key: a project allowed only these models, with a hard monthly limit
+    openai_key: str | None = None
+    openai_key_file: Path = Path.home() / ".config" / "lp" / "openai_server.key"
+
+    # per learner and day (UTC): no new lesson or drill past the budget; a session already going may
+    # finish on the grace, then it stops
     daily_budget_usd: float = 1.5
+    budget_grace_usd: float = 0.5
+    # abuse limits, enforced by the server whatever the client does
     audio_max_seconds: int = 120
+    upload_max_mb: float = 10
     text_max_chars: int = 2000
+    messages_per_minute: int = 20
 
 
 settings = Settings()

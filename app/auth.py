@@ -8,7 +8,8 @@ on the Mac. Typing the code into the app (`POST /auth/code`) does the same in on
 spends the access code only at that point.
 
 The answer to /auth/start is the same whether the address is known or not; letters are limited per
-address and per client address. The app then sends `Authorization: Bearer <token>`."""
+address and per client address. The app then sends `Authorization: Bearer <token>`; a page (and its
+<audio> and WebSocket, which can't set headers) has the same token in an HttpOnly cookie."""
 from __future__ import annotations
 
 import hashlib
@@ -20,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from starlette.requests import HTTPConnection
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +37,8 @@ EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MAX_ATTEMPTS = 5
 FINISH_WITHIN = timedelta(minutes=10)  # after the button is pressed, the app has this long to pick it up
 EXPIRED = "Ссылка и код устарели — запросите новое письмо"
+BLOCKED = "Доступ к Language Lab закрыт — напишите нам"
+COOKIE = "langlab_session"
 
 
 def _token() -> str:
@@ -243,31 +247,52 @@ async def _finish(s: AsyncSession, rid: str, request: Request) -> dict:
     else:
         learner = (await s.execute(select(Learner).where(Learner.email == r.email))).scalar_one()
     if learner.status != "active":
-        raise HTTPException(403, "Доступ к Language Lab закрыт — напишите нам")
+        raise HTTPException(403, BLOCKED)
     token = _token()
     s.add(AuthSession(id=_hash(token), learner_id=learner.id,
                       device=request.headers.get("user-agent", "")[:200]))
     await s.commit()
-    return {"status": "ok", "token": token, "learner": learner_json(learner)}
+    resp = JSONResponse({"status": "ok", "token": token, "learner": learner_json(learner)})
+    resp.set_cookie(COOKIE, token, max_age=settings.session_days * 86400, httponly=True, samesite="lax",
+                    secure=settings.public_url.startswith("https://"))
+    return resp
 
 
 # --- the signed-in learner ---
 
-async def current_learner(request: Request, s: AsyncSession = Depends(get_db)) -> Learner:
-    """Dependency for everything behind sign-in. A blocked learner is out at once; an expired access
-    still signs in (the app shows it), the tutor checks `access` itself."""
-    auth = request.headers.get("authorization", "")
-    token = auth[7:].strip() if auth[:7].lower() == "bearer " else ""
+def token_of(conn: HTTPConnection) -> str:
+    """The bearer header (the app), else the cookie (a page); a WebSocket may also pass `?token=`."""
+    auth = conn.headers.get("authorization", "")
+    if auth[:7].lower() == "bearer ":
+        return auth[7:].strip()
+    return conn.cookies.get(COOKIE) or (conn.query_params.get("token", "") if conn.scope["type"] == "websocket"
+                                        else "")
+
+
+async def signed_in(s: AsyncSession, token: str) -> tuple[AuthSession, Learner] | None:
+    """The device session behind a token and its learner; None if unknown, revoked or idle too long."""
     row = await s.get(AuthSession, _hash(token)) if token else None
     now = _now()
     if row is None or row.revoked_at or row.last_seen_at < now - timedelta(days=settings.session_days):
-        raise HTTPException(401, "Войдите заново", headers={"WWW-Authenticate": "Bearer"})
+        return None
     learner = await s.get(Learner, row.learner_id)
-    if learner is None or learner.status != "active":
-        raise HTTPException(403, "Доступ к Language Lab закрыт — напишите нам")
+    if learner is None:
+        return None
     if now - row.last_seen_at > timedelta(hours=1):
         row.last_seen_at = now
         await s.commit()
+    return row, learner
+
+
+async def current_learner(request: Request, s: AsyncSession = Depends(get_db)) -> Learner:
+    """Dependency for everything behind sign-in. A blocked learner is out at once; an expired access
+    still signs in (the app shows it), lessons check `access` themselves."""
+    found = await signed_in(s, token_of(request))
+    if found is None:
+        raise HTTPException(401, "Войдите заново", headers={"WWW-Authenticate": "Bearer"})
+    row, learner = found
+    if learner.status != "active":
+        raise HTTPException(403, BLOCKED)
     request.state.session_id = row.id
     return learner
 
@@ -282,4 +307,6 @@ async def logout(request: Request, _: Learner = Depends(current_learner), s: Asy
     await s.execute(update(AuthSession).where(AuthSession.id == request.state.session_id)
                     .values(revoked_at=_now()))
     await s.commit()
-    return {"ok": True}
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(COOKIE)
+    return resp

@@ -34,6 +34,7 @@ def configure() -> None:
         "LP_AUDIO_MAX_SECONDS": str(settings.audio_max_seconds), "LP_UPLOAD_MAX_MB": str(settings.upload_max_mb),
         "LP_TEXT_MAX_CHARS": str(settings.text_max_chars),
         "LP_MESSAGES_PER_MINUTE": str(settings.messages_per_minute),
+        "LP_HEAR_PER_MINUTE": str(settings.hear_per_minute), "LP_SAY_PER_MINUTE": str(settings.say_per_minute),
     }
     f = settings.openai_key_file
     key = settings.openai_key or (f.read_text().strip() if f.is_file() else "")
@@ -64,8 +65,11 @@ async def identify(scope) -> bool:
     path = scope.get("path", "")
     if scope["type"] == "http" and (path in PUBLIC_PATHS or path.startswith(PUBLIC_PREFIXES)):
         return True
+    conn = HTTPConnection(scope)
     async with sessionmaker()() as s:
-        found = await auth.signed_in(s, auth.token_of(HTTPConnection(scope)))
+        found = await auth.signed_in(s, auth.token_of(conn))
+        if found is None and scope["type"] == "websocket":
+            found = await auth.by_ticket(s, conn.query_params.get("ticket", ""))
     if found is None or found[1].status != "active":
         return False
     learner = found[1]
@@ -81,7 +85,7 @@ async def guard(lang: str, mode: str) -> None:
         raise HTTPException(401, "Войдите заново")
     if not auth.learner_json(learner)["access"]:
         raise HTTPException(403, "Доступ закончился — напишите нам, чтобы продлить")
-    if mode == "learn":  # a lesson is used as it starts (placement is free); one atomic step, so two at once can't both pass
+    if mode in ("learn", "placement"):  # a lesson is used as it starts, a placement too; one atomic step, so two at once can't both pass
         async with sessionmaker()() as s:
             used = (await s.execute(update(Learner).where(Learner.id == learner.id,
                                                           Learner.lessons_used < Learner.lessons_total)

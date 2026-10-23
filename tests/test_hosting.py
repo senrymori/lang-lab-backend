@@ -6,6 +6,7 @@ import httpx
 import numpy as np
 import pytest
 import soundfile as sf
+from fastapi import HTTPException
 from sqlalchemy import update
 
 from app import auth, codes, hosting
@@ -104,20 +105,20 @@ async def test_session_needs_access(no_tutor):
         assert (await c.get("/me")).json()["access"] is False
 
 
-async def test_a_lesson_is_used_as_it_starts_placement_is_free(no_tutor, monkeypatch):
-    token, l = await learner("Кира", days=None, lessons=1)
+async def test_a_lesson_or_a_placement_is_used_as_it_starts(no_tutor, monkeypatch):
+    token, l = await learner("Кира", days=None, lessons=2)
     async with client(token) as c:
-        assert (await c.get("/me")).json()["lessons_left"] == 1
+        assert (await c.get("/me")).json()["lessons_left"] == 2
         assert (await c.post("/api/session/en/start", json={"mode": "learn"})).status_code == 200
-        r = await c.post("/api/session/en/start", json={"mode": "learn"})
+        assert (await c.post("/api/session/es/start", json={"mode": "placement"})).status_code == 200
+        r = await c.post("/api/session/kk/start", json={"mode": "placement"})
         assert r.status_code == 403 and "Уроки закончились" in r.json()["detail"]
-        assert (await c.post("/api/session/en/start", json={"mode": "placement"})).status_code == 200
         me = (await c.get("/me")).json()
         assert me["lessons_left"] == 0 and me["access"] is True and me["access_until"] is None
     monkeypatch.setattr(settings, "admin_key", "k")
     async with client() as c:
         r = await c.patch(f"/admin/api/learners/{l.id}", json={"add_lessons": 2}, headers={"Authorization": "Bearer k"})
-        assert r.json()["lessons_total"] == 3
+        assert r.json()["lessons_total"] == 4
     async with client(token) as c:
         assert (await c.post("/api/session/en/start", json={"mode": "learn"})).status_code == 200
 
@@ -141,22 +142,87 @@ async def test_spend_is_booked_and_never_stops_a_session(monkeypatch):
     await hosting.check(S)
 
 
-async def test_a_recording_too_long_is_refused(monkeypatch):
-    import lp.server
-    token, _ = await learner("Кира")
-    monkeypatch.setattr(lp.server, "AUDIO_MAX_SECONDS", 2)
+def wav(seconds: float) -> bytes:
     buf = io.BytesIO()
-    sf.write(buf, np.zeros(16000 * 5, dtype="float32"), 16000, format="WAV")
+    sf.write(buf, np.zeros(int(16000 * seconds), dtype="float32"), 16000, format="WAV")
+    return buf.getvalue()
+
+
+async def lesson_pass(c, l, lang="en") -> str:
+    import lp.server
+    assert (await c.post(f"/api/session/{lang}/start", json={"mode": "learn"})).status_code == 200
+    return lp.server.sessions[f"{l.id}/{lang}"].pass_
+
+
+async def test_a_recording_too_long_is_refused(no_tutor, monkeypatch):
+    import lp.server
+    token, l = await learner("Кира")
+    monkeypatch.setattr(lp.server, "AUDIO_MAX_SECONDS", 2)
     async with client(token) as c:
-        r = await c.post("/api/transcribe/en", files={"file": ("a.webm", buf.getvalue(), "audio/webm")})
+        p = await lesson_pass(c, l)
+        r = await c.post("/api/transcribe/en", files={"file": ("a.webm", wav(5), "audio/webm")}, headers={"X-LP-Pass": p})
     assert r.status_code == 413 and "длиннее" in r.json()["detail"]
 
 
-async def test_websocket_signs_in_by_cookie_or_token():
+async def test_speech_needs_the_pass_of_a_lesson_going_on(no_tutor, monkeypatch):
+    import lp.server
+    token, l = await learner("Без урока")
+    (other, _) = await learner("Чужой")
+    async with client(token) as c:
+        for path, kw in [("/api/transcribe/en", {"files": {"file": ("a.webm", wav(1), "audio/webm")}}),
+                         ("/api/hear/en", {"files": {"file": ("a.webm", wav(1), "audio/webm")}}),
+                         ("/api/say/en", {"json": {"text": "hello"}})]:
+            assert (await c.post(path, **kw)).status_code == 403, path
+        p = await lesson_pass(c, l)
+        assert (await c.post("/api/say/en", json={"text": "hi"}, headers={"X-LP-Pass": "nope"})).status_code == 403
+        assert (await c.post("/api/say/es", json={"text": "hi"}, headers={"X-LP-Pass": p})).status_code == 403
+    async with client(other) as c:  # someone else's pass is no use
+        assert (await c.post("/api/say/en", json={"text": "hi"}, headers={"X-LP-Pass": p})).status_code == 403
+
+
+async def test_recognitions_a_minute_are_limited_per_learner(no_tutor, monkeypatch):
+    import lp.server
+    import lp.stt
+    monkeypatch.setattr(lp.server, "HEAR_PER_MINUTE", 2)
+    monkeypatch.setattr(lp.stt, "transcribe", lambda *a, **k: {"text": "hi", "cost": 0.001})
+    token, l = await learner("Торопыга")
+    async with client(token) as c:
+        p = await lesson_pass(c, l)
+        codes = [(await c.post("/api/transcribe/en", files={"file": ("a.webm", wav(1), "audio/webm")},
+                               headers={"X-LP-Pass": p})).status_code for _ in range(3)]
+    assert codes == [200, 200, 429]
+    assert await hosting.spent_today(l.id) == pytest.approx(0.002)  # recognition is booked on the learner
+
+
+async def test_one_lesson_at_a_time(monkeypatch):
+    import asyncio
+
+    import lp.server
+    import lp.tutor
+
+    async def going(self):  # a lesson that hasn't ended
+        await asyncio.Event().wait()
+    monkeypatch.setattr(lp.tutor.TutorSession, "run", going)
+    token, l = await learner("Двоечник")
+    async with client(token) as c:
+        await lesson_pass(c, l, "en")
+        r = await c.post("/api/session/kk/start", json={"mode": "learn"})
+        assert r.status_code == 409 and "закончите" in r.json()["detail"]
+        assert (await c.post("/api/session/en/start", json={"mode": "learn"})).json()["resumed"] is True
+    lp.server.sessions[f"{l.id}/en"].task.cancel()
+
+
+async def test_websocket_signs_in_by_cookie_or_a_one_time_ticket():
     import lp.core
     token, l = await learner("Лев")
+    # the token itself never goes in a URL: logs keep URLs
     scope = {"type": "websocket", "path": "/ws/en", "query_string": f"token={token}".encode(), "headers": []}
+    assert await hosting.identify(scope) is False
+    async with client(token) as c:
+        ticket = (await c.post("/auth/ws-ticket")).json()["ticket"]
+    scope = {"type": "websocket", "path": "/ws/en", "query_string": f"ticket={ticket}".encode(), "headers": []}
     assert await hosting.identify(scope) is True and lp.core.user() == str(l.id)
+    assert await hosting.identify(scope) is False  # spent
     scope = {"type": "websocket", "path": "/ws/en", "query_string": b"",
              "headers": [(b"cookie", f"{auth.COOKIE}={token}".encode())]}
     assert await hosting.identify(scope) is True
@@ -165,3 +231,45 @@ async def test_websocket_signs_in_by_cookie_or_token():
     # an http request never takes the token from the query string: it would end up in logs
     assert await hosting.identify({"type": "http", "path": "/api/overview", "query_string": f"token={token}".encode(),
                                    "headers": []}) is False
+
+
+async def test_a_practice_game_gets_a_pass_of_its_own(monkeypatch):
+    import lp.core
+    import lp.server
+    _, l = await learner("Игрок")
+    lp.core.use_learner(str(l.id), "Игрок")
+    p = lp.server._practice_pass("kk")
+    assert lp.server._pass("kk", p).mode == "practice"
+    with pytest.raises(HTTPException):
+        lp.server._pass("en", p)  # for its own language only
+    monkeypatch.setattr(lp.server, "PRACTICE_PASS_HOURS", -1)
+    stale = lp.server._practice_pass("kk")
+    with pytest.raises(HTTPException):
+        lp.server._pass("kk", stale)
+
+
+async def test_profile_fields_have_a_limit_and_the_tutor_s_additions_are_retold(monkeypatch):
+    import lp.core
+    import lp.openai_tutor
+    import lp.tutor
+    token, l = await learner("Писатель")
+    async with client(token) as c:
+        r = await c.put("/api/learner", json={"about": "я" * (lp.core.LEARNER_MAX + 1)})
+        assert r.status_code == 400 and "длиннее" in r.json()["detail"]
+        assert (await c.put("/api/learner", json={"about": "я" * 900})).status_code == 200
+    lp.core.use_learner(str(l.id), "Писатель")
+    seen = []
+
+    async def retold(S, label, text, limit):
+        seen.append((label, len(text), limit))
+        return "коротко"
+    monkeypatch.setattr(lp.openai_tutor, "squeeze", retold)
+    out = await lp.tutor.save_learner_fields(None, {"about": "я" * 900 + "\nновое " * 30})
+    assert out["about"] == "коротко" and seen[0][2] == lp.core.LEARNER_SQUEEZE_TO
+
+    async def failed(S, label, text, limit):
+        return None
+    monkeypatch.setattr(lp.openai_tutor, "squeeze", failed)
+    out = await lp.tutor.save_learner_fields(None, {"interests": "старое\n" * 200 + "новое"})
+    assert len(out["interests"]) <= lp.core.LEARNER_MAX and out["interests"].endswith("новое")
+    assert not out["interests"].startswith("тарое")  # cut at a line, not mid-word

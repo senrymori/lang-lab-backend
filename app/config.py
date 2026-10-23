@@ -68,7 +68,9 @@ class Settings(BaseSettings):
     audio_max_seconds: int = 120
     upload_max_mb: float = 10
     text_max_chars: int = 2000
-    messages_per_minute: int = 20
+    messages_per_minute: int = 20  # to the tutor, per lesson
+    hear_per_minute: int = 12  # speech recognitions per learner (answers, voice notes, games)
+    say_per_minute: int = 60  # lines voiced for a game per learner (the same line again is a file already made)
 
 
 settings = Settings()

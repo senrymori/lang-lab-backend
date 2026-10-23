@@ -267,17 +267,35 @@ async def _finish(s: AsyncSession, rid: str, request: Request) -> dict:
 # --- the signed-in learner ---
 
 def token_of(conn: HTTPConnection) -> str:
-    """The bearer header (the app), else the cookie (a page); a WebSocket may also pass `?token=`."""
+    """The bearer header (the app), else the cookie (a page). Never the URL: URLs land in logs — a WebSocket
+    that can't send either takes a one-time ticket instead (`/auth/ws-ticket`)."""
     auth = conn.headers.get("authorization", "")
     if auth[:7].lower() == "bearer ":
         return auth[7:].strip()
-    return conn.cookies.get(COOKIE) or (conn.query_params.get("token", "") if conn.scope["type"] == "websocket"
-                                        else "")
+    return conn.cookies.get(COOKIE) or ""
+
+
+# one-time tickets for a WebSocket (`?ticket=`): good for one connection within TICKET_SECONDS, so the one a log
+# keeps is already spent. In memory: one server process
+TICKET_SECONDS = 60
+_tickets: dict[str, tuple[str, datetime]] = {}  # sha256 of the ticket -> (device session id, valid until)
+
+
+async def by_ticket(s: AsyncSession, ticket: str) -> tuple[AuthSession, Learner] | None:
+    """The device session a WebSocket's ticket was issued to; the ticket is spent either way."""
+    got = _tickets.pop(_hash(ticket), None) if ticket else None
+    if got is None or got[1] < _now():
+        return None
+    return await _session(s, got[0])
 
 
 async def signed_in(s: AsyncSession, token: str) -> tuple[AuthSession, Learner] | None:
     """The device session behind a token and its learner; None if unknown, revoked or idle too long."""
-    row = await s.get(AuthSession, _hash(token)) if token else None
+    return await _session(s, _hash(token)) if token else None
+
+
+async def _session(s: AsyncSession, sid: str) -> tuple[AuthSession, Learner] | None:
+    row = await s.get(AuthSession, sid)
     now = _now()
     if row is None or row.revoked_at or row.last_seen_at < now - timedelta(days=settings.session_days):
         return None
@@ -301,6 +319,16 @@ async def current_learner(request: Request, s: AsyncSession = Depends(get_db)) -
         raise HTTPException(403, BLOCKED)
     request.state.session_id = row.id
     return learner
+
+
+@router.post("/auth/ws-ticket")
+async def ws_ticket(request: Request, _: Learner = Depends(current_learner)):
+    now = _now()
+    for k in [k for k, (_, until) in _tickets.items() if until < now]:
+        del _tickets[k]
+    ticket = _token()
+    _tickets[_hash(ticket)] = (request.state.session_id, now + timedelta(seconds=TICKET_SECONDS))
+    return {"ticket": ticket, "expires_in": TICKET_SECONDS}
 
 
 @router.get("/me")

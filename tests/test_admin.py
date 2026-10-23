@@ -44,3 +44,19 @@ async def test_codes_learners_and_blocking(admin):
         assert all(x.revoked_at for x in (await s.scalars(select(AuthSession).where(AuthSession.learner_id == l.id))))
     async with client(token) as c:
         assert (await c.get("/me")).status_code in (401, 403)
+
+
+async def test_the_admin_only_on_its_host(admin, monkeypatch):
+    import httpx
+    from app.main import app
+    monkeypatch.setattr(settings, "admin_host", "admin.example.com")
+
+    def on(host):
+        return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=f"http://{host}")
+    async with on("api.example.com") as c:
+        assert (await c.get("/admin/api/overview", headers=admin)).status_code == 404
+        assert (await c.get("/health")).status_code == 200
+    async with on("admin.example.com") as c:
+        assert (await c.get("/admin/api/overview", headers=admin)).status_code == 200
+        r = await c.get("/api/overview")
+        assert r.status_code == 307 and r.headers["location"] == "/admin/"

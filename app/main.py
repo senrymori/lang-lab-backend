@@ -37,6 +37,20 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Language Lab", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def admin_only_on_its_host(request, call_next):
+    """The admin lives on its own host, behind Cloudflare Access; the learners' host has no /admin at all."""
+    if settings.admin_host:
+        from fastapi.responses import JSONResponse, RedirectResponse
+        on_admin = request.url.hostname == settings.admin_host
+        is_admin = request.url.path == "/admin" or request.url.path.startswith("/admin/")
+        if is_admin and not on_admin:
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        if on_admin and not is_admin:
+            return RedirectResponse("/admin/")
+    return await call_next(request)
 app.include_router(auth.router)
 app.include_router(admin.router)
 

@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     admin_key: str | None = None
     admin_key_file: Path = Path.home() / ".config" / "lp" / "admin.key"
     admin_ui_dir: Path | None = None  # the admin page's build (lang-lab-admin/dist), served at /admin/
+    # the admin's only host (Cloudflare Access in front): /admin is not found anywhere else, and this host serves
+    # nothing but the admin. None (dev) — no split
+    admin_host: str | None = None
 
     # per learner and day (UTC): no new lesson or placement past the budget; a session already going may
     # finish on the grace, then it stops

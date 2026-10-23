@@ -29,6 +29,7 @@ services:
       LANGLAB_BEHIND_CLOUDFLARE: "true"
       LANGLAB_MAIL_BACKEND: resend
       LANGLAB_ADMIN_UI_DIR: /srv/admin
+      LANGLAB_ADMIN_HOST: admin.langlab.uk
     volumes:
       - data:/data
       - /opt/langlab/lang-lab-admin/dist:/srv/admin:ro  # the admin page, built on the Mac by deploy.sh

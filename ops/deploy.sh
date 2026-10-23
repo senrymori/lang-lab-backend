@@ -8,6 +8,11 @@ KEY=~/.ssh/langlab_ed25519
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 LP=$(cd "$HERE/../learning-lang-platform" && pwd)
 
+ADMIN="$HERE/../lang-lab-admin"
+(cd "$ADMIN" && npm ci --no-audit --no-fund --silent && npm run build --silent)
+ssh -i $KEY "$HOST" mkdir -p /opt/langlab/lang-lab-admin
+rsync -az --delete -e "ssh -i $KEY" "$ADMIN/dist/" "$HOST:/opt/langlab/lang-lab-admin/dist/"
+
 for d in "$HERE" "$LP"; do
   rsync -az --delete -e "ssh -i $KEY" \
     --exclude .git --exclude .venv --exclude .idea --exclude __pycache__ --exclude .pytest_cache \

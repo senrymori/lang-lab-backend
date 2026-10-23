@@ -51,4 +51,7 @@ async def health():
                                           "placement": settings.model_placement}}
 
 
+if settings.admin_ui_dir and settings.admin_ui_dir.is_dir():  # after the admin API's routes, which win
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/admin", StaticFiles(directory=settings.admin_ui_dir, html=True), name="admin")
 app.mount("/", hosting.install())  # last: the routes above win

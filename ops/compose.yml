@@ -28,10 +28,12 @@ services:
       LANGLAB_PUBLIC_URL: https://api.langlab.uk
       LANGLAB_BEHIND_CLOUDFLARE: "true"
       LANGLAB_MAIL_BACKEND: resend
+      LANGLAB_ADMIN_UI_DIR: /srv/admin
     volumes:
       - data:/data
+      - /opt/langlab/lang-lab-admin/dist:/srv/admin:ro  # the admin page, built on the Mac by deploy.sh
       - cache:/root/.cache  # models, TTS and song caches; first filled from the image
-      - /etc/langlab/keys:/root/.config/lp:ro  # openai_server, gemini, resend, azure_speech
+      - /etc/langlab/keys:/root/.config/lp:ro  # openai_server, gemini, resend, azure_speech, admin
     ports: ["127.0.0.1:8000:8000"]  # for checks from the server itself; the world comes through the tunnel
 
   tunnel:

@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     # the admin's API (app/admin.py): off without a key
     admin_key: str | None = None
     admin_key_file: Path = Path.home() / ".config" / "lp" / "admin.key"
+    admin_ui_dir: Path | None = None  # the admin page's build (lang-lab-admin/dist), served at /admin/
 
     # per learner and day (UTC): no new lesson or placement past the budget; a session already going may
     # finish on the grace, then it stops

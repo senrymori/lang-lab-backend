@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg espeak-n
     && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir uv==0.12.23
 
-ENV UV_PROJECT_ENVIRONMENT=/venv UV_LINK_MODE=copy UV_COMPILE_BYTECODE=1 PATH=/venv/bin:$PATH \
+ENV UV_PROJECT_ENVIRONMENT=/venv UV_LINK_MODE=copy UV_COMPILE_BYTECODE=1 UV_NO_CACHE=1 PATH=/venv/bin:$PATH \
     HF_HOME=/root/.cache/huggingface PYTHONUNBUFFERED=1
 
 # dependencies first, so a code change doesn't reinstall them

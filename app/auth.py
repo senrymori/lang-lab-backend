@@ -1,6 +1,10 @@
 """Sign-in by email — a link, or the six-digit code from the same letter — instead of a password.
 
-The app sends `POST /auth/start` with the address (plus an access code and a name to register) and gets
+In the alpha nobody gets in without an access code: the app asks for it first (`POST /auth/check-code`) and
+only then offers Google or a letter; a learner who already has an account signs in without one. The one
+exception is an invite the admin mails (`invite_letter`): its link registers them with nothing to type.
+
+The app sends `POST /auth/start` with the address (plus the access code to register) and gets
 a request token only it knows. The link in the letter opens a page with a button: a GET never signs
 anyone in, so mail scanners that open links do nothing. The button approves the request and the app,
 polling `POST /auth/poll`, gets its session — the letter can be opened on the phone while the app waits
@@ -29,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from . import codes, mail
 from .config import settings
 from .db import get_db
-from .models import AuthSession, Learner, LoginRequest
+from .models import AccessCode, AuthSession, Learner, LoginRequest
 
 router = APIRouter()
 
@@ -112,8 +116,35 @@ font:600 16px Inter,sans-serif;cursor:pointer;text-decoration:none}}
 
 class Start(BaseModel):
     email: str = Field(max_length=320)
-    code: str | None = Field(None, max_length=40)  # an access code: registers a new learner
-    name: str = Field("", max_length=80)
+    code: str | None = Field(None, max_length=40)  # an access code: registers a new learner (named by the code)
+
+
+class CheckCode(BaseModel):
+    code: str = Field(max_length=40)
+
+
+class Invite(BaseModel):
+    t: str = Field(max_length=100)
+
+
+CHECKS_PER_HOUR = 20
+_checks: dict[str, list[datetime]] = {}  # client address -> recent code checks (one server process)
+
+
+@router.post("/auth/check-code")
+async def check_code(body: CheckCode, request: Request, s: AsyncSession = Depends(get_db)):
+    """The app's first screen: is this a code that lets a new learner in? Nothing is spent. Limited per address,
+    so codes can't be guessed by trying."""
+    now, ip = _now(), _ip(request)
+    recent = [t for t in _checks.get(ip, []) if t > now - timedelta(hours=1)]
+    if len(recent) >= CHECKS_PER_HOUR:
+        raise HTTPException(429, "Слишком много попыток — попробуйте через час")
+    _checks[ip] = recent + [now]
+    try:
+        await codes.check(s, body.code, new_learner=True, any_address=True)
+    except codes.CodeError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "code": codes.normalize(body.code)}
 
 
 class Poll(BaseModel):
@@ -142,20 +173,17 @@ async def start(body: Start, request: Request, s: AsyncSession = Depends(get_db)
         raise HTTPException(429, "Слишком много попыток входа — попробуйте через час")
 
     known = (await s.execute(select(Learner).where(Learner.email == email))).scalar_one_or_none()
-    name = (body.name or "").strip()
     try:
         if body.code:  # checked even for a known address, so a wrong code says nothing about who is registered
-            await codes.check(s, body.code, new_learner=known is None)
+            await codes.check(s, body.code, new_learner=known is None, email=email)
     except codes.CodeError as e:
         raise HTTPException(400, str(e))
     if known:
         purpose, name = "login", known.name
     elif body.code:
-        if not name:
-            raise HTTPException(400, "Как к вам обращаться? Впишите имя")
-        purpose = "register"
+        purpose, name = "register", await codes.name_of(s, body.code)
     else:
-        purpose = "none"
+        purpose, name = "none", ""
 
     req, link, digits = _token(), _token(), f"{secrets.randbelow(10 ** 6):06d}"
     rid = _hash(req)
@@ -247,11 +275,16 @@ async def _finish(s: AsyncSession, rid: str, request: Request) -> dict:
         raise HTTPException(410, EXPIRED)
     if r.purpose == "register":
         try:
-            learner = await codes.register(s, email=r.email, name=r.name, code=r.access_code)
+            learner = await codes.register(s, email=r.email, code=r.access_code, name=r.name)
         except codes.CodeError as e:  # the code went to someone else or the beta filled up meanwhile
             raise HTTPException(409, str(e))
     else:
         learner = (await s.execute(select(Learner).where(Learner.email == r.email))).scalar_one()
+    return await _open(s, learner, request)
+
+
+async def _open(s: AsyncSession, learner: Learner, request: Request) -> JSONResponse:
+    """A session for this device: the token to the app, the same in an HttpOnly cookie for a page."""
     if learner.status != "active":
         raise HTTPException(403, BLOCKED)
     token = _token()
@@ -262,6 +295,61 @@ async def _finish(s: AsyncSession, rid: str, request: Request) -> dict:
     resp.set_cookie(COOKIE, token, max_age=settings.session_days * 86400, httponly=True, samesite="lax",
                     secure=settings.public_url.startswith("https://"))
     return resp
+
+
+# --- an invite mailed from the admin: its link registers them, no code to type ---
+
+INVITE_LINK = "langlab://invite?t="  # handled by the app's main process (lp desktop/main.js), never by its page
+
+
+def invite_letter(name: str, code: str, link: str) -> tuple[str, str, str]:
+    """`link` — our page, which hands the token to the app; `code` — the same invite typed by hand."""
+    hello = f"Здравствуйте, {name}!" if name else "Здравствуйте!"
+    get = f"Скачайте приложение: {settings.download_url}\n" if settings.download_url else ""
+    subject = "Приглашение в Language Lab"
+    text = (f"{hello}\n\nВас пригласили в Language Lab — репетитора английского, испанского и казахского.\n\n"
+            f"{get}Чтобы начать, откройте ссылку на этом Mac и нажмите «Открыть Language Lab»:\n{link}\n\n"
+            f"Или откройте приложение и введите код приглашения: {code}\nВойти нужно с этой почты.")
+    dl = (f'<p style="font-size:16px">Сначала скачайте приложение: <a href="{html.escape(settings.download_url)}" '
+          f'style="color:#4116C9">{html.escape(settings.download_url)}</a></p>') if settings.download_url else ""
+    html_ = f"""<div style="font-family:Inter,-apple-system,Segoe UI,Roboto,sans-serif;max-width:480px;margin:0 auto;
+padding:24px;color:#111">
+<p style="font-size:16px">{html.escape(hello)}</p>
+<p style="font-size:16px">Вас пригласили в Language Lab — репетитора английского, испанского и казахского.</p>{dl}
+<p style="font-size:16px">Откройте на своём Mac:</p>
+<p><a href="{html.escape(link)}" style="display:inline-block;background:#4116C9;color:#fff;text-decoration:none;
+padding:12px 28px;border-radius:14px;font-weight:600;font-size:16px">Начать</a></p>
+<p style="font-size:16px">Или откройте приложение и введите код приглашения:</p>
+<p style="font-size:24px;font-weight:700;letter-spacing:3px;margin:8px 0 24px">{code}</p>
+<p style="font-size:13px;color:#666">Войти нужно с этой почты. Приглашение личное — не пересылайте его.</p></div>"""
+    return subject, text, html_
+
+
+@router.get("/auth/invite", response_class=HTMLResponse)
+async def invite_page(t: str = ""):
+    """Opening the letter's link changes nothing (mail scanners open links): the button hands the token to the app."""
+    get = (f'<p>Нет приложения? <a href="{html.escape(settings.download_url)}" style="color:#a28bff">Скачайте его</a>, '
+           "установите и нажмите кнопку ещё раз.</p>") if settings.download_url else \
+        "<p>Если ничего не открылось — установите приложение и нажмите ещё раз.</p>"
+    return _page("Приглашение в Language Lab", f"""<p>Нажмите, чтобы открыть приложение и начать.</p>
+<a class="btn" href="{INVITE_LINK}{html.escape(t)}">Открыть Language Lab</a>{get}""")
+
+
+@router.post("/auth/invite")
+async def redeem_invite(body: Invite, request: Request, s: AsyncSession = Depends(get_db)):
+    """The app got the letter's token: register the address the invite was made for and open a session. The link
+    dies with the code: once used it signs nobody in again."""
+    c = (await s.execute(select(AccessCode).where(AccessCode.link == _hash(body.t)))).scalar_one_or_none()
+    if c is None or not c.email:
+        raise HTTPException(410, "Приглашение не найдено — попросите прислать новое")
+    if (await s.execute(select(Learner.id).where(Learner.email == c.email))).first():
+        raise HTTPException(409, "Вы уже зарегистрированы — войдите по почте")
+    await s.commit()  # register runs its own transaction
+    try:
+        learner = await codes.register(s, email=c.email, code=c.code)
+    except codes.CodeError as e:
+        raise HTTPException(410, f"{e}. Попросите прислать новое приглашение")
+    return await _open(s, learner, request)
 
 
 # --- the signed-in learner ---

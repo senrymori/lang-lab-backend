@@ -1,6 +1,7 @@
-"""Access codes: made for a person (invite) or a campaign (promo), spent at registration.
+"""Access codes: made for a person (invite) or a campaign (promo), spent at registration. An invite carries the
+name the tutor will use; one made with an address is only for that address (the admin mails its link).
 
-  uv run python -m app.codes new --note "Аня, коллега" --lessons 12 [--days 90] [--expires 14]
+  uv run python -m app.codes new --note "Аня, коллега" --name Аня --lessons 12 [--days 90] [--expires 14]
   uv run python -m app.codes list
 """
 from __future__ import annotations
@@ -36,11 +37,12 @@ def normalize(code: str) -> str:
     return f"LAB-{s[:4]}-{s[4:]}" if len(s) == 8 else code.strip().upper()
 
 
-async def create(s: AsyncSession, *, note: str, lessons: int = 12, days: int | None = None, kind: str = "invite",
-                 max_uses: int = 1, expires_in_days: int | None = None) -> AccessCode:
+async def create(s: AsyncSession, *, note: str, name: str = "", email: str | None = None, lessons: int = 12,
+                 days: int | None = None, kind: str = "invite", max_uses: int = 1,
+                 expires_in_days: int | None = None) -> AccessCode:
     c = AccessCode(code=new_code(), kind=kind, lessons=lessons, days=days, max_uses=1 if kind == "invite" else max_uses,
-                   note=note, expires_at=(datetime.now(timezone.utc) + timedelta(days=expires_in_days))
-                   if expires_in_days else None)
+                   note=note, name=name.strip()[:80], email=email.strip().lower() if email else None,
+                   expires_at=(datetime.now(timezone.utc) + timedelta(days=expires_in_days)) if expires_in_days else None)
     s.add(c)
     await s.commit()
     return c
@@ -50,24 +52,38 @@ BAD_CODE = "Код не подходит: неверный, уже исполь�
 CLOSED = "Набор в бету закрыт: все места заняты"
 
 
-def _usable(code: str, now: datetime):
+def _usable(code: str, now: datetime, email: str | None = None):
+    """A code anyone may use now; given an address, also one made for that address (an emailed invite's code
+    is for its address only, so a forwarded letter gets nobody else in)."""
+    for_whom = AccessCode.email.is_(None)
+    if email:
+        for_whom = for_whom | (AccessCode.email == email.strip().lower())
     return (AccessCode.code == normalize(code), AccessCode.active.is_(True), AccessCode.used < AccessCode.max_uses,
-            (AccessCode.expires_at.is_(None)) | (AccessCode.expires_at > now))
+            (AccessCode.expires_at.is_(None)) | (AccessCode.expires_at > now), for_whom)
 
 
-async def check(s: AsyncSession, code: str, *, new_learner: bool) -> None:
+async def check(s: AsyncSession, code: str, *, new_learner: bool, email: str | None = None,
+                any_address: bool = False) -> None:
     """Would `register` take this code now? Nothing is spent: the address is confirmed first, so a typo in
-    the email doesn't burn an invite."""
-    if (await s.execute(select(AccessCode.code).where(*_usable(code, datetime.now(timezone.utc))))).first() is None:
+    the email doesn't burn an invite. `any_address`: before the address is known (the app asks for the code
+    first), a code made for one address passes too; registering still holds it to that address."""
+    where = _usable(code, datetime.now(timezone.utc), email)
+    if any_address:
+        where = where[:-1]
+    if (await s.execute(select(AccessCode.code).where(*where))).first() is None:
         raise CodeError(BAD_CODE)
     if new_learner and (await s.execute(select(func.count()).select_from(Learner))).scalar_one() >= settings.max_learners:
         raise CodeError(CLOSED)
 
 
-async def register(s: AsyncSession, *, email: str, name: str, code: str) -> Learner:
-    """A new learner with the access their code gives. One transaction: the cap is checked under a lock
-    and the code is spent with a conditional UPDATE, so two people can't both use the last place or the
-    same invite."""
+async def name_of(s: AsyncSession, code: str) -> str:
+    return (await s.execute(select(AccessCode.name).where(AccessCode.code == normalize(code)))).scalar_one_or_none() or ""
+
+
+async def register(s: AsyncSession, *, email: str, code: str, name: str = "") -> Learner:
+    """A new learner with the access their code gives, called by the name the code carries (`name` — what
+    Google said — only when it carries none). One transaction: the cap is checked under a lock and the code
+    is spent with a conditional UPDATE, so two people can't both use the last place or the same invite."""
     email = email.strip().lower()
     async with s.begin():
         await s.execute(text("select pg_advisory_xact_lock(4242)"))  # registrations one at a time
@@ -78,13 +94,13 @@ async def register(s: AsyncSession, *, email: str, name: str, code: str) -> Lear
         now = datetime.now(timezone.utc)
         got = (await s.execute(
             update(AccessCode)
-            .where(*_usable(code, now))
+            .where(*_usable(code, now, email))
             .values(used=AccessCode.used + 1)
-            .returning(AccessCode.lessons, AccessCode.days))).one_or_none()
+            .returning(AccessCode.lessons, AccessCode.days, AccessCode.name))).one_or_none()
         if got is None:
             raise CodeError(BAD_CODE)
-        lessons, days = got
-        learner = Learner(email=email, name=name.strip()[:80], code=normalize(code), lessons_total=lessons,
+        lessons, days, named = got
+        learner = Learner(email=email, name=(named or name).strip()[:80], code=normalize(code), lessons_total=lessons,
                           access_until=now + timedelta(days=days) if days else None)
         s.add(learner)
     return learner
@@ -95,7 +111,7 @@ async def _cli(a) -> None:
     try:
         async with sessionmaker()() as s:
             if a.cmd == "new":
-                c = await create(s, note=a.note, lessons=a.lessons, days=a.days, kind=a.kind, max_uses=a.uses,
+                c = await create(s, note=a.note, name=a.name, lessons=a.lessons, days=a.days, kind=a.kind, max_uses=a.uses,
                                  expires_in_days=a.expires)
                 print(f"{c.code}  ({c.kind}, {c.lessons} уроков" + (f" на {c.days} дн." if c.days else "")
                       + (f", сгорит {c.expires_at:%d.%m.%Y}" if c.expires_at else "") + f") — {c.note}")
@@ -112,6 +128,7 @@ if __name__ == "__main__":
     sub = ap.add_subparsers(dest="cmd", required=True)
     n = sub.add_parser("new", help="make a code")
     n.add_argument("--note", required=True, help="who it is for")
+    n.add_argument("--name", default="", help="how the tutor addresses them")
     n.add_argument("--lessons", type=int, default=12, help="lessons it gives")
     n.add_argument("--days", type=int, help="and a time limit on them (default: none)")
     n.add_argument("--kind", choices=["invite", "promo"], default="invite")

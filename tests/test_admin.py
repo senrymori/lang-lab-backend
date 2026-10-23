@@ -26,8 +26,9 @@ async def test_closed_without_the_key(monkeypatch, tmp_path):
 
 async def test_codes_learners_and_blocking(admin):
     async with client() as c:
-        r = await c.post("/admin/api/codes", json={"note": "Аня", "lessons": 12}, headers=admin)
-        assert r.status_code == 200 and r.json()["code"].startswith("LAB-")
+        assert (await c.post("/admin/api/codes", json={"note": "Аня", "lessons": 12}, headers=admin)).status_code == 400
+        r = await c.post("/admin/api/codes", json={"note": "коллега", "name": "Аня", "lessons": 12}, headers=admin)
+        assert r.status_code == 200 and r.json()["code"].startswith("LAB-") and r.json()["name"] == "Аня"
         code = r.json()["code"]
         assert any(x["code"] == code for x in (await c.get("/admin/api/codes", headers=admin)).json())
         assert (await c.patch(f"/admin/api/codes/{code}", json={"active": False}, headers=admin)).json()["active"] is False

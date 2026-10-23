@@ -33,7 +33,8 @@ class Learner(Base):
 
 class AccessCode(Base):
     """A way in. `invite` — personal, made for one person and spent by one registration (the closed
-    beta); `promo` — for marketing, many uses. Spent atomically in `codes.register`."""
+    beta); `promo` — for marketing, many uses. Spent atomically in `codes.register`. The learner's name comes
+    from here: nobody is asked for it at sign-up."""
     __tablename__ = "access_codes"
 
     code: Mapped[str] = mapped_column(String(40), primary_key=True)
@@ -43,6 +44,11 @@ class AccessCode(Base):
     max_uses: Mapped[int] = mapped_column(Integer, default=1)
     used: Mapped[int] = mapped_column(Integer, default=0)
     note: Mapped[str] = mapped_column(String(200), default="")  # who it is for, where it was posted
+    name: Mapped[str] = mapped_column(String(80), default="", server_default="")  # how the tutor addresses them
+    # an invite sent from the admin: only this address may use the code, and the letter's link (its sha256 here)
+    # registers them with nothing to type
+    email: Mapped[str | None] = mapped_column(String(320))
+    link: Mapped[str | None] = mapped_column(String(64), unique=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # unused codes burn out
     active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -84,7 +90,7 @@ class LoginRequest(Base):
     code: Mapped[str] = mapped_column(String(64))  # sha256 of id + the six digits
     email: Mapped[str] = mapped_column(String(320), index=True)
     purpose: Mapped[str] = mapped_column(String(10))  # login | register | none
-    name: Mapped[str] = mapped_column(String(80), default="")  # register: how to address them
+    name: Mapped[str] = mapped_column(String(80), default="")  # Google's given name, if the code has none
     access_code: Mapped[str | None] = mapped_column(String(40))  # register: spent only when confirmed
     ip: Mapped[str] = mapped_column(String(64), default="", index=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)  # codes typed into the app

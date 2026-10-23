@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     # letters: resend | console | memory (tests); auto — resend when a key is found, else console
     mail_backend: str = "auto"
     mail_from: str = "Language Lab <login@mail.langlab.uk>"
+    download_url: str = ""  # where the app is downloaded from, for the invite letter (none yet: the letter skips it)
     resend_key: str | None = None
     resend_key_file: Path = Path.home() / ".config" / "lp" / "resend.key"
 

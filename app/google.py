@@ -41,8 +41,7 @@ def _redirect_uri() -> str:
 
 
 class GoogleStart(BaseModel):
-    code: str | None = Field(None, max_length=40)  # an access code: a new learner
-    name: str = Field("", max_length=80)
+    code: str | None = Field(None, max_length=40)  # an access code: a new learner (named by the code)
 
 
 @router.post("/auth/google/start")
@@ -56,12 +55,12 @@ async def google_start(body: GoogleStart, request: Request, s: AsyncSession = De
         raise HTTPException(429, "Слишком много попыток входа — попробуйте через час")
     if body.code:
         try:
-            await codes.check(s, body.code, new_learner=True)
+            await codes.check(s, body.code, new_learner=True, any_address=True)
         except codes.CodeError as e:
             raise HTTPException(400, str(e))
     req, state = _token(), _token()
     s.add(LoginRequest(id=_hash(req), link=_hash(state), code=_hash(_token()), email="", purpose="google",
-                       name=body.name.strip()[:80], ip=ip,
+                       ip=ip,
                        access_code=codes.normalize(body.code) if body.code else None,
                        expires_at=now + timedelta(minutes=settings.login_minutes)))
     await s.commit()
@@ -109,15 +108,17 @@ async def google_callback(state: str = "", code: str = "", error: str = "", s: A
         purpose, name = "login", known.name
     elif r.access_code:
         try:
-            await codes.check(s, r.access_code, new_learner=True)
+            await codes.check(s, r.access_code, new_learner=True, email=email)
         except codes.CodeError as e:
-            return _page("Код не подошёл", f"<p>{e}. Вернитесь в приложение.</p>")
-        purpose, name = "register", r.name or who.get("given_name") or who.get("name") or ""
+            return _page("Код не подошёл", f"<p>{e}. Если приглашение пришло на другую почту — войдите с неё. "
+                                          "Вернитесь в приложение.</p>")
+        # the code's name wins at registration; Google's is only for a code without one
+        purpose, name = "register", who.get("given_name") or who.get("name") or ""
     else:
         await s.execute(update(LoginRequest).where(LoginRequest.id == r.id).values(expires_at=now))
         await s.commit()
         return _page("Сначала код приглашения", f"""<p>{email} ещё не зарегистрирован в Language Lab. Вернитесь в
-приложение, отметьте «Я впервые» и введите код приглашения.</p>""")
+приложение и сначала введите код приглашения.</p>""")
     await s.execute(update(LoginRequest).where(LoginRequest.id == r.id)
                     .values(email=email, purpose=purpose, name=str(name)[:80], approved_at=now))
     await s.commit()

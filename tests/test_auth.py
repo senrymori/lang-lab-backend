@@ -26,13 +26,13 @@ def letter_to(email: str) -> tuple[str, str]:
     return re.search(r"код: (\d{6})", m["text"])[1], re.search(r"/auth/link\?t=(\S+)", m["text"])[1]
 
 
-async def invite(note="тест") -> str:
+async def invite(note="тест", name="Ученик") -> str:
     async with sessionmaker()() as s:
-        return (await codes.create(s, note=note, days=90)).code
+        return (await codes.create(s, note=note, name=name, days=90)).code
 
 
 async def test_register_by_code_and_sign_in():
-    code = await invite()
+    code = await invite(name="Маша")
     async with client() as c:
         r = await c.post("/auth/start", json={"email": "Masha@Example.com", "code": code.lower(), "name": "Маша"})
         assert r.status_code == 200
@@ -55,7 +55,7 @@ async def test_register_by_code_and_sign_in():
 
 
 async def test_link_needs_the_button_then_the_app_signs_in():
-    code = await invite()
+    code = await invite(name="Петя")
     async with client() as c:
         req = (await c.post("/auth/start", json={"email": "petya@example.com", "code": code, "name": "Петя"})).json()["request"]
         await c.post("/auth/code", json={"request": req, "code": letter_to("petya@example.com")[0]})
@@ -86,14 +86,11 @@ async def test_unknown_address_gets_the_same_answer_and_no_letter():
     assert len(mail.outbox) == n
 
 
-async def test_bad_code_or_no_name_sends_nothing():
+async def test_a_bad_code_sends_nothing():
     n = len(mail.outbox)
-    code = await invite()
     async with client() as c:
-        r = await c.post("/auth/start", json={"email": "x@example.com", "code": "LAB-NOPE-NOPE", "name": "X"})
+        r = await c.post("/auth/start", json={"email": "x@example.com", "code": "LAB-NOPE-NOPE"})
         assert r.status_code == 400 and "Код не подходит" in r.json()["detail"]
-        r = await c.post("/auth/start", json={"email": "x@example.com", "code": code})
-        assert r.status_code == 400 and "имя" in r.json()["detail"]
         assert (await c.post("/auth/start", json={"email": "not-an-email"})).status_code == 400
     assert len(mail.outbox) == n
 

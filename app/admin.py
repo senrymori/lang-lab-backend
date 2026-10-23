@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import codes
+from . import auth, codes, mail
 from .config import settings
 from .db import get_db
 from .models import AccessCode, AuthSession, Learner, Spend, SpendAlert
@@ -110,12 +110,19 @@ async def change_learner(lid: uuid.UUID, body: LearnerChange, s: AsyncSession = 
 @router.get("/codes")
 async def list_codes(s: AsyncSession = Depends(get_db)):
     rows = (await s.execute(select(AccessCode).order_by(AccessCode.created_at.desc()))).scalars()
-    return [{"code": c.code, "kind": c.kind, "lessons": c.lessons, "days": c.days, "used": c.used, "max_uses": c.max_uses, "note": c.note,
-             "expires_at": c.expires_at, "active": c.active, "created_at": c.created_at} for c in rows]
+    return [_code_json(c) for c in rows]
+
+
+def _code_json(c: AccessCode) -> dict:
+    return {"code": c.code, "kind": c.kind, "name": c.name, "email": c.email, "lessons": c.lessons, "days": c.days,
+            "used": c.used, "max_uses": c.max_uses, "note": c.note, "expires_at": c.expires_at, "active": c.active,
+            "created_at": c.created_at, "sent": c.link is not None}
 
 
 class NewCode(BaseModel):
-    note: str = Field(max_length=200)
+    note: str = Field("", max_length=200)
+    name: str = Field("", max_length=80)  # how the tutor addresses them: nobody is asked at sign-up
+    email: str | None = Field(None, max_length=320)  # an invite for this address only, mailed with a link
     lessons: int = Field(12, ge=1, le=1000)
     days: int | None = Field(None, ge=1, le=3650)  # a time limit on the lessons, if any
     kind: Literal["invite", "promo"] = "invite"
@@ -125,9 +132,43 @@ class NewCode(BaseModel):
 
 @router.post("/codes")
 async def new_code(body: NewCode, s: AsyncSession = Depends(get_db)):
-    c = await codes.create(s, note=body.note, lessons=body.lessons, days=body.days, kind=body.kind, max_uses=body.max_uses,
-                           expires_in_days=body.expires_in_days)
-    return {"code": c.code, "kind": c.kind, "lessons": c.lessons, "days": c.days, "max_uses": c.max_uses, "expires_at": c.expires_at}
+    email = (body.email or "").strip().lower() or None
+    if email:
+        if body.kind != "invite":
+            raise HTTPException(400, "Письмом отправляется только личное приглашение")
+        if not auth.EMAIL.match(email):
+            raise HTTPException(400, "Проверьте адрес почты")
+        if (await s.execute(select(Learner.id).where(Learner.email == email))).first():
+            raise HTTPException(409, "Этот адрес уже зарегистрирован")
+    if body.kind == "invite" and not body.name.strip():
+        raise HTTPException(400, "Как репетитору к нему обращаться? Впишите имя")
+    c = await codes.create(s, note=body.note, name=body.name, email=email, lessons=body.lessons, days=body.days,
+                           kind=body.kind, max_uses=body.max_uses, expires_in_days=body.expires_in_days)
+    if email:
+        await _send_invite(s, c)
+    return _code_json(c)
+
+
+async def _send_invite(s: AsyncSession, c: AccessCode) -> None:
+    """A fresh link (the old one stops working) and the letter with it."""
+    t = auth._token()
+    c.link = auth._hash(t)
+    await s.commit()
+    try:
+        await mail.send(c.email, *auth.invite_letter(c.name, c.code, f"{settings.public_url.rstrip('/')}/auth/invite?t={t}"))
+    except mail.MailError:
+        raise HTTPException(502, "Код создан, но письмо не ушло — отправьте ещё раз")
+
+
+@router.post("/codes/{code}/send")
+async def send_invite(code: str, s: AsyncSession = Depends(get_db)):
+    c = await s.get(AccessCode, codes.normalize(code))
+    if c is None:
+        raise HTTPException(404)
+    if not c.email or c.used >= c.max_uses or not c.active:
+        raise HTTPException(400, "Отправить можно только неиспользованное приглашение с почтой")
+    await _send_invite(s, c)
+    return _code_json(c)
 
 
 class CodeChange(BaseModel):

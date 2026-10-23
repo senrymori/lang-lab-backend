@@ -26,7 +26,7 @@ async def test_closed_without_the_key(monkeypatch, tmp_path):
 
 async def test_codes_learners_and_blocking(admin):
     async with client() as c:
-        r = await c.post("/admin/api/codes", json={"note": "Аня", "days": 30}, headers=admin)
+        r = await c.post("/admin/api/codes", json={"note": "Аня", "lessons": 12}, headers=admin)
         assert r.status_code == 200 and r.json()["code"].startswith("LAB-")
         code = r.json()["code"]
         assert any(x["code"] == code for x in (await c.get("/admin/api/codes", headers=admin)).json())
@@ -37,8 +37,8 @@ async def test_codes_learners_and_blocking(admin):
         rows = (await c.get("/admin/api/learners", headers=admin)).json()
         me = next(x for x in rows if x["id"] == str(l.id))
         assert me["status"] == "active" and me["spent_today_usd"] == 0
-        r = await c.patch(f"/admin/api/learners/{l.id}", json={"extend_days": 10, "status": "blocked"}, headers=admin)
-        assert r.json()["status"] == "blocked"
+        r = await c.patch(f"/admin/api/learners/{l.id}", json={"add_lessons": 3, "status": "blocked"}, headers=admin)
+        assert r.json()["status"] == "blocked" and r.json()["lessons_total"] == 15
         assert (await c.get("/admin/api/overview", headers=admin)).json()["learners"]["blocked"] >= 1
     async with sessionmaker()() as s:
         assert all(x.revoked_at for x in (await s.scalars(select(AuthSession).where(AuthSession.learner_id == l.id))))

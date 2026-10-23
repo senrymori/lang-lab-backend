@@ -71,14 +71,14 @@ async def learners(s: AsyncSession = Depends(get_db)):
     from lp import server
     live = {k.split("/")[0]: s_.mode for k, s_ in server.sessions.items()}
     return [{"id": str(l.id), "email": l.email, "name": l.name, "status": l.status, "code": l.code,
-             "access_until": l.access_until, "created_at": l.created_at, "last_seen_at": seen_at,
+             "lessons_total": l.lessons_total, "lessons_used": l.lessons_used, "access_until": l.access_until, "created_at": l.created_at, "last_seen_at": seen_at,
              "spent_today_usd": float(today or 0), "spent_30d_usd": float(d30 or 0), "live": live.get(str(l.id))}
             for l, seen_at, today, d30 in rows]
 
 
 class LearnerChange(BaseModel):
     status: Literal["active", "blocked"] | None = None
-    extend_days: int | None = Field(None, ge=1, le=3650)  # from now or from the current end, whichever is later
+    add_lessons: int | None = Field(None, ge=-1000, le=1000)  # negative takes back (never below those used)
     name: str | None = Field(None, max_length=80)
 
 
@@ -87,8 +87,8 @@ async def change_learner(lid: uuid.UUID, body: LearnerChange, s: AsyncSession = 
     l = await s.get(Learner, lid)
     if l is None:
         raise HTTPException(404)
-    if body.extend_days:
-        l.access_until = max(l.access_until or _now(), _now()) + timedelta(days=body.extend_days)
+    if body.add_lessons:
+        l.lessons_total = max(l.lessons_used, l.lessons_total + body.add_lessons)
     if body.name is not None:
         l.name = body.name.strip()
     if body.status:
@@ -101,19 +101,21 @@ async def change_learner(lid: uuid.UUID, body: LearnerChange, s: AsyncSession = 
                 if k.startswith(f"{lid}/") and live.task:
                     live.task.cancel()
     await s.commit()
-    return {"id": str(l.id), "status": l.status, "access_until": l.access_until, "name": l.name}
+    return {"id": str(l.id), "status": l.status, "lessons_total": l.lessons_total, "lessons_used": l.lessons_used,
+            "name": l.name}
 
 
 @router.get("/codes")
 async def list_codes(s: AsyncSession = Depends(get_db)):
     rows = (await s.execute(select(AccessCode).order_by(AccessCode.created_at.desc()))).scalars()
-    return [{"code": c.code, "kind": c.kind, "days": c.days, "used": c.used, "max_uses": c.max_uses, "note": c.note,
+    return [{"code": c.code, "kind": c.kind, "lessons": c.lessons, "days": c.days, "used": c.used, "max_uses": c.max_uses, "note": c.note,
              "expires_at": c.expires_at, "active": c.active, "created_at": c.created_at} for c in rows]
 
 
 class NewCode(BaseModel):
     note: str = Field(max_length=200)
-    days: int = Field(ge=1, le=3650)
+    lessons: int = Field(12, ge=1, le=1000)
+    days: int | None = Field(None, ge=1, le=3650)  # a time limit on the lessons, if any
     kind: Literal["invite", "promo"] = "invite"
     max_uses: int = Field(1, ge=1, le=100000)
     expires_in_days: int | None = Field(None, ge=1, le=365)
@@ -121,9 +123,9 @@ class NewCode(BaseModel):
 
 @router.post("/codes")
 async def new_code(body: NewCode, s: AsyncSession = Depends(get_db)):
-    c = await codes.create(s, note=body.note, days=body.days, kind=body.kind, max_uses=body.max_uses,
+    c = await codes.create(s, note=body.note, lessons=body.lessons, days=body.days, kind=body.kind, max_uses=body.max_uses,
                            expires_in_days=body.expires_in_days)
-    return {"code": c.code, "kind": c.kind, "days": c.days, "max_uses": c.max_uses, "expires_at": c.expires_at}
+    return {"code": c.code, "kind": c.kind, "lessons": c.lessons, "days": c.days, "max_uses": c.max_uses, "expires_at": c.expires_at}
 
 
 class CodeChange(BaseModel):

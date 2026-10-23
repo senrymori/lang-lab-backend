@@ -19,7 +19,10 @@ class Learner(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(320), unique=True)
     name: Mapped[str] = mapped_column(String(80), default="")
-    # access ends here: an access code or a payment moves it; the admin can extend it
+    # access is counted in lessons: a code gives some, the admin adds more; a lesson is used when it starts
+    lessons_total: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    lessons_used: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # optionally also a date (none — no end); kept for paid periods later
     access_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(16), default="active")  # active | blocked
     code: Mapped[str | None] = mapped_column(ForeignKey("access_codes.code"))  # the code they joined with
@@ -33,7 +36,8 @@ class AccessCode(Base):
 
     code: Mapped[str] = mapped_column(String(40), primary_key=True)
     kind: Mapped[str] = mapped_column(String(10), default="invite")  # invite | promo
-    days: Mapped[int] = mapped_column(Integer)  # access it gives
+    lessons: Mapped[int] = mapped_column(Integer, default=12, server_default="12")  # lessons it gives
+    days: Mapped[int | None] = mapped_column(Integer)  # and a time limit on them, if any
     max_uses: Mapped[int] = mapped_column(Integer, default=1)
     used: Mapped[int] = mapped_column(Integer, default=0)
     note: Mapped[str] = mapped_column(String(200), default="")  # who it is for, where it was posted

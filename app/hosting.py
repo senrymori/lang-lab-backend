@@ -10,7 +10,7 @@ from contextvars import ContextVar
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from starlette.requests import HTTPConnection
 
@@ -83,6 +83,14 @@ async def guard(lang: str, mode: str) -> None:
         raise HTTPException(403, "Доступ закончился — напишите нам, чтобы продлить")
     if await spent_today(learner.id) >= settings.daily_budget_usd:
         raise HTTPException(429, "На сегодня занятия закончились: дневной лимит исчерпан. Продолжим завтра")
+    if mode == "learn":  # a lesson is used as it starts (placement is free); one atomic step, so two at once can't both pass
+        async with sessionmaker()() as s:
+            used = (await s.execute(update(Learner).where(Learner.id == learner.id,
+                                                          Learner.lessons_used < Learner.lessons_total)
+                                    .values(lessons_used=Learner.lessons_used + 1).returning(Learner.id))).first()
+            await s.commit()
+        if used is None:
+            raise HTTPException(403, "Уроки закончились — напишите нам, чтобы добавить")
 
 
 async def check(S) -> None:

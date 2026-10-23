@@ -61,9 +61,11 @@ def _ip(request: Request) -> str:
 
 def learner_json(learner: Learner) -> dict:
     until = learner.access_until
+    left = max(0, learner.lessons_total - learner.lessons_used)
     return {"id": str(learner.id), "email": learner.email, "name": learner.name, "status": learner.status,
             "access_until": until.astimezone(timezone.utc).isoformat() if until else None,
-            "access": learner.status == "active" and until is not None and until > _now()}
+            "lessons_total": learner.lessons_total, "lessons_left": left,
+            "access": learner.status == "active" and (until is None or until > _now())}
 
 
 # --- the letter and the page behind its link ---

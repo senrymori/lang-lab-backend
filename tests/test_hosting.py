@@ -20,10 +20,10 @@ def client(token: str | None = None) -> httpx.AsyncClient:
                              headers={"Authorization": f"Bearer {token}"} if token else {})
 
 
-async def learner(name: str, days: int = 90) -> tuple[str, Learner]:
+async def learner(name: str, days: int | None = 90, lessons: int = 12) -> tuple[str, Learner]:
     """A registered learner signed in on one device: (token, learner)."""
     async with sessionmaker()() as s:
-        code = await codes.create(s, note=name, days=days)
+        code = await codes.create(s, note=name, lessons=lessons, days=days)
     async with sessionmaker()() as s:
         l = await codes.register(s, email=f"{uuid.uuid4().hex[:8]}@example.com", name=name, code=code.code)
     token = auth._token()
@@ -109,6 +109,24 @@ async def test_session_needs_access_and_budget(no_tutor):
         r = await c.post("/api/session/en/start", json={"mode": "learn"})
         assert r.status_code == 403 and "Доступ закончился" in r.json()["detail"]
         assert (await c.get("/me")).json()["access"] is False
+
+
+async def test_a_lesson_is_used_as_it_starts_placement_is_free(no_tutor, monkeypatch):
+    token, l = await learner("Кира", days=None, lessons=1)
+    async with client(token) as c:
+        assert (await c.get("/me")).json()["lessons_left"] == 1
+        assert (await c.post("/api/session/en/start", json={"mode": "learn"})).status_code == 200
+        r = await c.post("/api/session/en/start", json={"mode": "learn"})
+        assert r.status_code == 403 and "Уроки закончились" in r.json()["detail"]
+        assert (await c.post("/api/session/en/start", json={"mode": "placement"})).status_code == 200
+        me = (await c.get("/me")).json()
+        assert me["lessons_left"] == 0 and me["access"] is True and me["access_until"] is None
+    monkeypatch.setattr(settings, "admin_key", "k")
+    async with client() as c:
+        r = await c.patch(f"/admin/api/learners/{l.id}", json={"add_lessons": 2}, headers={"Authorization": "Bearer k"})
+        assert r.json()["lessons_total"] == 3
+    async with client(token) as c:
+        assert (await c.post("/api/session/en/start", json={"mode": "learn"})).status_code == 200
 
 
 async def test_spend_is_booked_and_stops_a_session_past_the_grace():

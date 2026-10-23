@@ -30,7 +30,7 @@ def configure() -> None:
         "LP_HOSTED": "1", "LP_USER": "nobody",
         "LP_DATA": str(settings.data_dir), "LP_RECORDINGS": str(settings.recordings_dir),
         "LP_TUTOR_PROVIDER": settings.tutor_provider, "LP_TUTOR_MODEL_LEARN": settings.model_learn,
-        "LP_TUTOR_MODEL_PLACEMENT": settings.model_placement, "LP_TUTOR_MODEL_DRILL": settings.model_drill,
+        "LP_TUTOR_MODEL_PLACEMENT": settings.model_placement,
         "LP_AUDIO_MAX_SECONDS": str(settings.audio_max_seconds), "LP_UPLOAD_MAX_MB": str(settings.upload_max_mb),
         "LP_TEXT_MAX_CHARS": str(settings.text_max_chars),
         "LP_MESSAGES_PER_MINUTE": str(settings.messages_per_minute),
@@ -72,7 +72,7 @@ async def identify(scope) -> bool:
 
 
 async def guard(lang: str, mode: str) -> None:
-    """Before a lesson, placement or drill starts."""
+    """Before a lesson or a placement starts."""
     learner = _learner.get()
     if learner is None:
         raise HTTPException(401, "Войдите заново")

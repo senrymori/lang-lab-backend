@@ -44,7 +44,7 @@ async def health():
         db = (await c.execute(text("select 1"))).scalar() == 1
     import lp.store  # noqa: F401  the core loads with this server's settings
     return {"ok": db, "db": db, "tutor": {"provider": settings.tutor_provider, "learn": settings.model_learn,
-                                          "placement": settings.model_placement, "drill": settings.model_drill}}
+                                          "placement": settings.model_placement}}
 
 
 app.mount("/", hosting.install())  # last: the routes above win

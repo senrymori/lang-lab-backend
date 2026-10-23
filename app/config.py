@@ -40,12 +40,11 @@ class Settings(BaseSettings):
     tutor_provider: str = "openai"
     model_learn: str = "gpt-6.1-sol"
     model_placement: str = "gpt-6-luna"
-    model_drill: str = "gpt-6.1-sol"
     # the server's own key: a project allowed only these models, with a hard monthly limit
     openai_key: str | None = None
     openai_key_file: Path = Path.home() / ".config" / "lp" / "openai_server.key"
 
-    # per learner and day (UTC): no new lesson or drill past the budget; a session already going may
+    # per learner and day (UTC): no new lesson or placement past the budget; a session already going may
     # finish on the grace, then it stops
     daily_budget_usd: float = 1.5
     budget_grace_usd: float = 0.5

@@ -41,8 +41,8 @@ uv run python -m app.codes list
 Всё, кроме входа, `/me` и `/health`, — приложение `lp` (страница, его API, WebSocket репетитора),
 смонтированное в корень под входом этого сервера (`app/hosting.py`). `lp` работает в режиме
 `LP_HOSTED`: ученик — аккаунт отсюда, его файлы — в `var/data/<id>`, записи — в `var/recordings/<id>`.
-- **Модели по режимам:** урок и отработка — `gpt-6.1-sol`, плейсмент — `gpt-6-luna`
-  (`LANGLAB_MODEL_LEARN|PLACEMENT|DRILL`). Ключ сервера — `LANGLAB_OPENAI_KEY` или
+- **Модели по режимам:** урок — `gpt-6.1-sol`, плейсмент — `gpt-6-luna`
+  (`LANGLAB_MODEL_LEARN|PLACEMENT`). Ключ сервера — `LANGLAB_OPENAI_KEY` или
   `~/.config/lp/openai_server.key`: проект OpenAI, где разрешены только эти модели, с жёстким лимитом в
   месяц.
 - **Дневной бюджет ученика** (`LANGLAB_DAILY_BUDGET_USD`, $1.5, по UTC): после него новое занятие не

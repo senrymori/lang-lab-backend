@@ -4,6 +4,7 @@ sit in data_dir/<learner id>; the models per mode and the limits come from setti
 how much a learner uses is capped by their lessons alone. `configure()` runs before anything imports lp — lp reads its environment at import."""
 from __future__ import annotations
 
+import logging
 import os
 import uuid
 from contextvars import ContextVar
@@ -19,6 +20,7 @@ from .config import settings
 from .db import sessionmaker
 from .models import AuthSession, Learner, Spend, SpendAlert
 
+log = logging.getLogger(__name__)
 _learner: ContextVar[Learner | None] = ContextVar("langlab_learner", default=None)
 
 
@@ -156,7 +158,8 @@ async def flagged(text: str) -> list[str]:
     import lp.openai_tutor as ot
     try:
         r = await AsyncOpenAI(api_key=ot._key()).moderations.create(model=settings.moderation_model, input=text)
-    except Exception:
+    except Exception as e:  # never silent: a key without the moderation model lets everything through
+        log.warning("moderation failed, the message went unchecked: %s", str(e)[:300])
         return []
     res = r.results[0]
     if not res.flagged:

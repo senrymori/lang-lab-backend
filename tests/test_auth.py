@@ -147,3 +147,18 @@ async def test_expired_letter_and_blocked_learner():
             await s.commit()
         assert (await c.post("/auth/code", json={"request": req, "code": digits})).status_code == 403
         assert (await c.get("/me", headers={"Authorization": "Bearer nonsense"})).status_code == 401
+
+
+async def test_a_dev_server_takes_its_fixed_code_and_no_other_does(monkeypatch):
+    from app.config import settings
+    monkeypatch.setattr(settings, "dev_login_code", "000000")
+    code = await invite(name="Дев")
+    async with client() as c:
+        await c.post("/auth/start", json={"email": "dev@example.com", "code": code})
+        assert letter_to("dev@example.com")[0] == "000000"
+    from app import auth
+    monkeypatch.setattr(settings, "public_url", "https://api.langlab.uk")  # reachable by anyone: random codes again
+    assert auth._dev_code() is None
+    monkeypatch.setattr(settings, "public_url", "http://127.0.0.1:8000")
+    monkeypatch.setattr(settings, "dev_login_code", "0000")  # not six digits: not taken
+    assert auth._dev_code() is None

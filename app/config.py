@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     login_minutes: int = 15
     session_days: int = 180
     login_per_email: int = 3  # letters per address within login_minutes
+    # a dev server on this Mac (lang-lab-platform/scripts/client.sh): every sign-in code is this one, so nobody has to
+    # dig the letter out of the log. Ignored unless public_url is this machine (auth._dev_code)
+    dev_login_code: str | None = None
     login_per_ip_hour: int = 20
 
     # beta: registration closes at this many learners

@@ -22,6 +22,7 @@ import html
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -73,6 +74,14 @@ def learner_json(learner: Learner) -> dict:
 
 
 # --- the letter and the page behind its link ---
+
+def _dev_code() -> str | None:
+    """The fixed sign-in code of a dev server, only when it is reached at this machine: a server anyone can reach
+    never takes it, whatever its environment says."""
+    code = settings.dev_login_code
+    local = urlsplit(settings.public_url).hostname in ("127.0.0.1", "localhost", "::1")
+    return code if code and local and re.fullmatch(r"\d{6}", code) else None
+
 
 def _letter(purpose: str, name: str, digits: str, link: str) -> tuple[str, str, str]:
     hello = f"Здравствуйте, {name}!" if name else "Здравствуйте!"
@@ -185,7 +194,7 @@ async def start(body: Start, request: Request, s: AsyncSession = Depends(get_db)
     else:
         purpose, name = "none", ""
 
-    req, link, digits = _token(), _token(), f"{secrets.randbelow(10 ** 6):06d}"
+    req, link, digits = _token(), _token(), _dev_code() or f"{secrets.randbelow(10 ** 6):06d}"
     rid = _hash(req)
     s.add(LoginRequest(id=rid, link=_hash(link), email=email, purpose=purpose, name=name[:80], ip=ip,
                        code=_hash(f"{rid}:{digits}") if purpose != "none" else _hash(_token()),

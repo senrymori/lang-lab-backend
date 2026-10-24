@@ -42,3 +42,5 @@ async def send(to: str, subject: str, text: str, html: str) -> None:
         if r.status_code >= 300:
             log.error("resend %s: %s", r.status_code, r.text[:500])
             raise MailError(f"resend {r.status_code}")
+        from .hosting import count
+        await count("letters", 1)  # Resend's free plan: letters a day and a month, watched in the admin

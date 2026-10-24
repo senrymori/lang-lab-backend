@@ -70,3 +70,35 @@ async def test_a_blocked_learner_can_still_sign_out(admin):
         assert (await c.get("/me")).status_code == 403  # the ban screen
         assert (await c.post("/auth/logout")).status_code == 200  # its «Выйти»
         assert (await c.get("/me")).status_code == 401  # signed out: the sign-in screen
+
+
+async def test_spend_by_service_the_detail_and_the_free_allowances(admin, monkeypatch):
+    from types import SimpleNamespace
+
+    from app import abuse, hosting
+
+    async def a_lesson(S, sums):
+        return {"spam": False, "reason": "урок"}
+    monkeypatch.setattr(abuse, "_review", a_lesson)
+    _, a = await learner("Аня")
+    _, b = await learner("Боб")
+    A, B = SimpleNamespace(user=str(a.id), sid="a", lang="it"), SimpleNamespace(user=str(b.id), sid="b", lang="es")
+    await hosting.book(A, 0.5)                # the tutor
+    await hosting.book(A, 0.25)
+    await hosting.book(A, 0.1, "speech")
+    await hosting.book(B, 0.02, "checks")
+    await hosting.count("azure_chars", 1200)
+    await hosting.count("letters", 2)
+    async with client() as c:
+        o = (await c.get("/admin/api/overview", headers=admin)).json()
+        assert o["services_month"]["tutor"] >= 0.75 and o["services_month"]["speech"] >= 0.1
+        assert o["allowances"]["azure_chars_month"] >= 1200 and o["allowances"]["letters_today"] >= 2
+        assert o["allowances"]["azure_chars_limit"] == settings.azure_free_chars_month and o["fixed_costs"]
+        day = (await c.get("/admin/api/spend", params={"learner": str(a.id)}, headers=admin)).json()[-1]
+        assert day["by_service"] == {"tutor": 0.75, "speech": 0.1} and day["calls"] == 3
+        d = (await c.get("/admin/api/spend/detail", params={"learner": str(a.id)}, headers=admin)).json()
+        assert d["by_service"] == {"tutor": 0.75, "speech": 0.1} and [x["name"] for x in d["by_learner"]] == ["Аня"]
+        d = (await c.get("/admin/api/spend/detail", params={"service": "checks"}, headers=admin)).json()
+        assert {r["name"] for r in d["rows"]} == {"Боб"} and d["total_usd"] == pytest.approx(0.02, abs=1e-6)
+        rows = (await c.get("/admin/api/learners", headers=admin)).json()
+        assert next(x for x in rows if x["id"] == str(a.id))["spent_today_usd"] == pytest.approx(0.85)  # all services

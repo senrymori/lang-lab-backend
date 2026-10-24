@@ -69,13 +69,26 @@ class AccessRequest(Base):
 
 
 class Spend(Base):
-    """Model spend per learner and day, for the admin."""
+    """Spend per learner, day and service, for the admin."""
     __tablename__ = "spend"
 
     learner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("learners.id"), primary_key=True)
     day: Mapped[date] = mapped_column(Date, primary_key=True)
+    # what the money went to: tutor (OpenAI, the tutor's model) | helper (OpenAI, the small model's wait lines and
+    # profile retelling) | checks (OpenAI, the server's reviews of a session) | speech (Gemini, speech recognition)
+    service: Mapped[str] = mapped_column(String(16), primary_key=True, default="tutor", server_default="tutor")
     usd: Mapped[float] = mapped_column(Numeric(10, 4), default=0)
     calls: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class Usage(Base):
+    """What free allowances are used up by, per day (not money): azure_chars — characters sent to Azure's voices,
+    letters — letters sent through Resend."""
+    __tablename__ = "usage"
+
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    service: Mapped[str] = mapped_column(String(16), primary_key=True)
+    amount: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class SpendAlert(Base):

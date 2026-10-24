@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from . import auth, codes, mail
 from .config import settings
 from .db import get_db
-from .models import AccessCode, AccessRequest, AuthSession, Learner, Spend, SpendAlert
+from .models import AccessCode, AccessRequest, AuthSession, Learner, Spend, SpendAlert, Usage
 
 
 def _key() -> str:
@@ -52,10 +52,21 @@ async def overview(s: AsyncSession = Depends(get_db)):
     total = lambda since: select(func.coalesce(func.sum(Spend.usd), 0)).where(Spend.day >= since)  # noqa: E731
     today, this_month = (await s.scalar(total(_today()))), (await s.scalar(total(month)))
     asking = await s.scalar(select(func.count()).select_from(AccessRequest))
+    by_service = (await s.execute(select(Spend.service, func.sum(Spend.usd)).where(Spend.day >= month)
+                                  .group_by(Spend.service))).all()
+    used = lambda service, since: select(func.coalesce(func.sum(Usage.amount), 0)).where(  # noqa: E731
+        Usage.service == service, Usage.day >= since)
     from lp import server
     return {"learners": {k: n for k, n in learners}, "max_learners": settings.max_learners,
             "spent_today_usd": float(today), "spent_month_usd": float(this_month), "live_lessons": len(server.sessions),
-            "requests": asking}
+            "requests": asking, "services_month": {k: float(v) for k, v in by_service},
+            "allowances": {"azure_chars_month": int(await s.scalar(used("azure_chars", month))),
+                           "azure_chars_limit": settings.azure_free_chars_month,
+                           "letters_today": int(await s.scalar(used("letters", _today()))),
+                           "letters_day_limit": settings.letters_day_limit,
+                           "letters_month": int(await s.scalar(used("letters", month))),
+                           "letters_month_limit": settings.letters_month_limit},
+            "fixed_costs": settings.fixed_costs}
 
 
 @router.get("/learners")
@@ -206,12 +217,45 @@ async def dismiss_request(rid: int, s: AsyncSession = Depends(get_db)):
 
 
 @router.get("/spend")
-async def spend(days: int = 30, s: AsyncSession = Depends(get_db)):
-    """Per day, all learners together: dollars and model calls."""
+async def spend(days: int = 30, learner: uuid.UUID | None = None, service: str | None = None,
+                s: AsyncSession = Depends(get_db)):
+    """Per day: dollars and calls, split by service — all learners together, or one learner, or one service."""
     since = _today() - timedelta(days=max(1, min(days, 365)) - 1)
-    rows = (await s.execute(select(Spend.day, func.sum(Spend.usd), func.sum(Spend.calls))
-                            .where(Spend.day >= since).group_by(Spend.day).order_by(Spend.day))).all()
-    return [{"day": d, "usd": float(u), "calls": int(n)} for d, u, n in rows]
+    q = select(Spend.day, Spend.service, func.sum(Spend.usd), func.sum(Spend.calls)).where(Spend.day >= since)
+    if learner:
+        q = q.where(Spend.learner_id == learner)
+    if service:
+        q = q.where(Spend.service == service)
+    days_ = {}
+    for d, svc, u, n in (await s.execute(q.group_by(Spend.day, Spend.service).order_by(Spend.day))).all():
+        row = days_.setdefault(d, {"day": d, "usd": 0.0, "calls": 0, "by_service": {}})
+        row["usd"] += float(u)
+        row["calls"] += int(n)
+        row["by_service"][svc] = float(u)
+    return list(days_.values())
+
+
+@router.get("/spend/detail")
+async def spend_detail(days: int = 30, learner: uuid.UUID | None = None, service: str | None = None,
+                       s: AsyncSession = Depends(get_db)):
+    """Everything behind the spend for a period, filtered by learner and service: the totals by service and by
+    learner, and every learner-day-service row (newest first)."""
+    since = _today() - timedelta(days=max(1, min(days, 365)) - 1)
+    where = [Spend.day >= since] + ([Spend.learner_id == learner] if learner else []) + \
+        ([Spend.service == service] if service else [])
+    rows = (await s.execute(select(Spend, Learner.name, Learner.email).join(Learner).where(*where)
+                            .order_by(Spend.day.desc(), Spend.usd.desc()).limit(2000))).all()
+    by_service, by_learner = {}, {}
+    for sp, name, email in rows:
+        by_service[sp.service] = by_service.get(sp.service, 0.0) + float(sp.usd)
+        who = by_learner.setdefault(str(sp.learner_id), {"learner_id": str(sp.learner_id), "name": name,
+                                                          "email": email, "usd": 0.0, "calls": 0})
+        who["usd"] += float(sp.usd)
+        who["calls"] += sp.calls
+    return {"total_usd": sum(by_service.values()), "by_service": by_service,
+            "by_learner": sorted(by_learner.values(), key=lambda x: -x["usd"]),
+            "rows": [{"day": sp.day, "learner_id": str(sp.learner_id), "name": name, "email": email,
+                      "service": sp.service, "usd": float(sp.usd), "calls": sp.calls} for sp, name, email in rows]}
 
 
 @router.get("/alerts")

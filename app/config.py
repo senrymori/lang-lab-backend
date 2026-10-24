@@ -75,6 +75,18 @@ class Settings(BaseSettings):
     # this many ever (self-harm aside — that is someone to help, never to block) blocks the learner
     moderation_model: str = "omni-moderation-latest"
     moderation_block_after: int = 3
+    # free allowances the admin watches (they cost nothing until they run out): Azure's neural voices on the F0 tier,
+    # Resend's free plan
+    azure_free_chars_month: int = 500_000
+    letters_day_limit: int = 100
+    letters_month_limit: int = 3000
+    # what Language Lab costs every month regardless of lessons, only shown in the admin as a reminder (USD a month;
+    # None — not set yet): LANGLAB_FIXED_COSTS='[{"name": "…", "usd_month": 12, "note": "…"}]'
+    fixed_costs: list[dict] = [
+        {"name": "VPS OVHcloud", "usd_month": None, "note": "сервер, база"},
+        {"name": "Cloudflare", "usd_month": None, "note": "R2: резервные копии и раздача приложения; домен langlab.uk"},
+        {"name": "Apple Developer Program", "usd_month": 8.25, "note": "$99 в год: подпись и нотаризация приложения"},
+    ]
     # every few messages of the learner's own, a cheap model reads the lesson: still doing it, or gone off it
     drift_model: str = "gpt-6-luna"
     # abuse limits, enforced by the server whatever the client does

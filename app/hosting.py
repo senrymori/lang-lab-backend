@@ -18,7 +18,7 @@ from starlette.requests import HTTPConnection
 from . import abuse, auth
 from .config import settings
 from .db import sessionmaker
-from .models import Learner, Spend, SpendAlert
+from .models import Learner, Spend, SpendAlert, Usage
 
 log = logging.getLogger(__name__)
 _learner: ContextVar[Learner | None] = ContextVar("langlab_learner", default=None)
@@ -98,10 +98,11 @@ async def check(S) -> None:
     await abuse.watch(S)
 
 
-async def book(S, usd: float) -> None:
+async def book(S, usd: float, kind: str = "tutor") -> None:
+    """A charge on the session's learner, by what it went to (lp.openai_tutor.book: tutor | helper | checks | speech)."""
     abuse.note(S, usd)
-    stmt = insert(Spend).values(learner_id=uuid.UUID(S.user), day=_today(), usd=usd, calls=1)
-    stmt = stmt.on_conflict_do_update(index_elements=[Spend.learner_id, Spend.day],
+    stmt = insert(Spend).values(learner_id=uuid.UUID(S.user), day=_today(), service=kind, usd=usd, calls=1)
+    stmt = stmt.on_conflict_do_update(index_elements=[Spend.learner_id, Spend.day, Spend.service],
                                       set_={"usd": Spend.usd + stmt.excluded.usd, "calls": Spend.calls + 1})
     async with sessionmaker()() as s:
         await s.execute(stmt)
@@ -253,8 +254,18 @@ async def drift_verdict(S) -> dict:
     price_in, price_cached, price_out = ot.PRICES[model]
     u = r.usage
     cached = (u.input_tokens_details.cached_tokens or 0) if u.input_tokens_details else 0
-    await ot.book(S, ((u.input_tokens - cached) * price_in + cached * price_cached + u.output_tokens * price_out) / 1e6)
+    await ot.book(S, ((u.input_tokens - cached) * price_in + cached * price_cached + u.output_tokens * price_out) / 1e6,
+                  "checks")
     return json.loads(r.output_text)
+
+
+async def count(service: str, n: int) -> None:
+    """A free allowance used by n today (azure_chars, letters)."""
+    stmt = insert(Usage).values(day=_today(), service=service, amount=n)
+    stmt = stmt.on_conflict_do_update(index_elements=[Usage.day, Usage.service], set_={"amount": Usage.amount + n})
+    async with sessionmaker()() as s:
+        await s.execute(stmt)
+        await s.commit()
 
 
 async def drift(S) -> None:

@@ -118,5 +118,6 @@ async def _review(S, sums: dict[int, float]) -> dict:
     price_in, price_cached, price_out = ot.PRICES[model]
     u = r.usage
     cached = (u.input_tokens_details.cached_tokens or 0) if u.input_tokens_details else 0
-    await ot.book(S, ((u.input_tokens - cached) * price_in + cached * price_cached + u.output_tokens * price_out) / 1e6)
+    await ot.book(S, ((u.input_tokens - cached) * price_in + cached * price_cached + u.output_tokens * price_out) / 1e6,
+                  "checks")
     return json.loads(r.output_text)

@@ -27,6 +27,10 @@ async def lifespan(app: FastAPI):
     from lp.tutor import MEDIA
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     MEDIA.mkdir(parents=True, exist_ok=True)
+    # Azure's voices are made in worker threads: their characters are counted back on this loop
+    import lp.tts
+    loop = asyncio.get_running_loop()
+    lp.tts.on_azure = lambda chars: asyncio.run_coroutine_threadsafe(hosting.count("azure_chars", chars), loop)
     sweeper = asyncio.create_task(cleanup.every())
     yield
     sweeper.cancel()

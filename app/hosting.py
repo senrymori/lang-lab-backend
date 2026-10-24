@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 import uuid
 from contextvars import ContextVar
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from fastapi import HTTPException
 from sqlalchemy import func, select, update
@@ -166,7 +166,7 @@ async def flagged(text: str) -> list[str]:
 
 async def moderate(lang: str, text: str, where: str) -> None:
     """What the learner wrote or said (lp.server.learner_said): flagged — a red flag in the admin with the words;
-    self-harm alone — noted for a human to look at, never blocked; the Nth flag within the window — blocked."""
+    self-harm alone — noted for a human to look at, never blocked; one short of N — the lemur warns; the Nth — blocked."""
     learner = _learner.get()
     if learner is None:
         return
@@ -182,15 +182,13 @@ async def moderate(lang: str, text: str, where: str) -> None:
                            verdict="care" if care else "flag", reason=reason[:500])
         s.add(alert)
         await s.flush()
-        since = now - timedelta(hours=settings.moderation_window_hours)
         flags = await s.scalar(select(func.count()).select_from(SpendAlert).where(
-            SpendAlert.learner_id == learner.id, SpendAlert.sid == "moderation", SpendAlert.verdict == "flag",
-            SpendAlert.created_at >= since))
+            SpendAlert.learner_id == learner.id, SpendAlert.sid == "moderation", SpendAlert.verdict == "flag"))
         block = not care and flags >= settings.moderation_block_after
         warn = not care and flags == settings.moderation_block_after - 1
         if block:
             alert.verdict = "spam"
-            await _block(s, learner, f"{flags} сообщений с недопустимым за {settings.moderation_window_hours} ч, "
+            await _block(s, learner, f"{flags}-е сообщение с недопустимым, "
                                      f"последнее: {reason}", now)
         await s.commit()
     if block:

@@ -354,7 +354,7 @@ async def test_moderation_flags_what_the_learner_says_and_blocks_on_the_third(mo
     assert Live.said == [{"type": "tutor", "text": hosting.LAST_WARNING}] and "пингвинам (бан)" in hosting.LAST_WARNING
     async with client(token) as c:
         assert (await c.get("/me")).status_code == 200
-    await hosting.moderate("es", "и ещё", "voice")                      # the third flag in a day: blocked
+    await hosting.moderate("es", "и ещё", "voice")                      # the third flag ever: blocked
     async with sessionmaker()() as s:
         rows = list(await s.scalars(select(SpendAlert).where(SpendAlert.learner_id == l.id).order_by(SpendAlert.id)))
         assert [a.verdict for a in rows] == ["care", "flag", "flag", "spam"]

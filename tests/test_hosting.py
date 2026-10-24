@@ -320,7 +320,7 @@ async def test_speech_bursts_flag_and_then_block_the_learner():
         assert verdicts == ["flag", "spam"]
         assert (await s.get(Learner, l.id)).status == "blocked"
     async with client(token) as c:
-        assert (await c.get("/me")).status_code in (401, 403)
+        assert (await c.get("/me")).status_code == 403  # blocked, still signed in: the app shows the ban
 
 
 async def test_moderation_flags_what_the_learner_says_and_blocks_on_the_third(monkeypatch):

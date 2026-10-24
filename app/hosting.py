@@ -18,7 +18,7 @@ from starlette.requests import HTTPConnection
 from . import abuse, auth
 from .config import settings
 from .db import sessionmaker
-from .models import AuthSession, Learner, Spend, SpendAlert
+from .models import Learner, Spend, SpendAlert
 
 log = logging.getLogger(__name__)
 _learner: ContextVar[Learner | None] = ContextVar("langlab_learner", default=None)
@@ -110,7 +110,7 @@ async def book(S, usd: float) -> None:
 
 async def burst(lang: str, block: bool, count: int, seconds: int) -> None:
     """Speech asked for faster than a person speaks (lp.server._burst): a red flag in the admin's list of suspicious
-    spend, or — far past anything human — the learner blocked, signed out everywhere, a lesson going now stopped."""
+    spend, or — far past anything human — the learner blocked (the app shows the ban), a lesson going now stopped."""
     learner = _learner.get()
     if learner is None:
         return
@@ -128,11 +128,10 @@ async def burst(lang: str, block: bool, count: int, seconds: int) -> None:
 
 
 async def _block(s, learner: Learner, reason: str, now: datetime) -> None:
-    """Blocked and signed out everywhere (the caller commits, then stops the lessons)."""
+    """Blocked (the caller commits, then stops the lessons). The sessions stay: every request of theirs is refused
+    with 403 all the same, and that is how the app knows to show the ban rather than the sign-in screen."""
     await s.execute(update(Learner).where(Learner.id == learner.id).values(
         status="blocked", blocked_reason=f"авто: {reason}"[:500], blocked_at=now))
-    await s.execute(update(AuthSession).where(AuthSession.learner_id == learner.id,
-                                              AuthSession.revoked_at.is_(None)).values(revoked_at=now))
 
 
 def _stop_lessons(learner: Learner) -> None:

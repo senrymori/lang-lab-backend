@@ -97,9 +97,7 @@ async def change_learner(lid: uuid.UUID, body: LearnerChange, s: AsyncSession = 
     if body.status:
         l.status = body.status
         l.blocked_reason, l.blocked_at = ("вручную", _now()) if body.status == "blocked" else ("", None)
-        if body.status == "blocked":  # signed out everywhere, and a lesson going now stops
-            await s.execute(update(AuthSession).where(AuthSession.learner_id == lid, AuthSession.revoked_at.is_(None))
-                            .values(revoked_at=_now()))
+        if body.status == "blocked":  # a lesson going now stops; the sessions stay, refused with 403 (the app's ban)
             from lp import server
             for k, live in list(server.sessions.items()):
                 if k.startswith(f"{lid}/") and live.task:

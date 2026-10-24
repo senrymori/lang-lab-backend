@@ -41,10 +41,9 @@ async def test_codes_learners_and_blocking(admin):
         r = await c.patch(f"/admin/api/learners/{l.id}", json={"add_lessons": 3, "status": "blocked"}, headers=admin)
         assert r.json()["status"] == "blocked" and r.json()["lessons_total"] == 15
         assert (await c.get("/admin/api/overview", headers=admin)).json()["learners"]["blocked"] >= 1
-    async with sessionmaker()() as s:
-        assert all(x.revoked_at for x in (await s.scalars(select(AuthSession).where(AuthSession.learner_id == l.id))))
-    async with client(token) as c:
-        assert (await c.get("/me")).status_code in (401, 403)
+    async with client(token) as c:  # the session stays and says «blocked» (the app shows the ban), and nothing else works
+        assert (await c.get("/me")).status_code == 403
+        assert (await c.post("/auth/ws-ticket")).status_code == 403
 
 
 async def test_the_admin_only_on_its_host(admin, monkeypatch):

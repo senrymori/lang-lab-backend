@@ -435,9 +435,12 @@ async def me(learner: Learner = Depends(current_learner)):
 
 
 @router.post("/auth/logout")
-async def logout(request: Request, _: Learner = Depends(current_learner), s: AsyncSession = Depends(get_db)):
-    await s.execute(update(AuthSession).where(AuthSession.id == request.state.session_id)
-                    .values(revoked_at=_now()))
+async def logout(request: Request, s: AsyncSession = Depends(get_db)):
+    """Signing out works for anyone signed in — a blocked learner too (from the ban screen)."""
+    found = await signed_in(s, token_of(request))
+    if found is None:
+        raise HTTPException(401, "Войдите заново", headers={"WWW-Authenticate": "Bearer"})
+    await s.execute(update(AuthSession).where(AuthSession.id == found[0].id).values(revoked_at=_now()))
     await s.commit()
     resp = JSONResponse({"ok": True})
     resp.delete_cookie(COOKIE)

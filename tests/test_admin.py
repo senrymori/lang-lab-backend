@@ -60,3 +60,13 @@ async def test_the_admin_only_on_its_host(admin, monkeypatch):
         assert (await c.get("/admin/api/overview", headers=admin)).status_code == 200
         r = await c.get("/api/overview")
         assert r.status_code == 307 and r.headers["location"] == "/admin/"
+
+
+async def test_a_blocked_learner_can_still_sign_out(admin):
+    token, l = await learner("Ушедший")
+    async with client() as c:
+        await c.patch(f"/admin/api/learners/{l.id}", json={"status": "blocked"}, headers=admin)
+    async with client(token) as c:
+        assert (await c.get("/me")).status_code == 403  # the ban screen
+        assert (await c.post("/auth/logout")).status_code == 200  # its «Выйти»
+        assert (await c.get("/me")).status_code == 401  # signed out: the sign-in screen

@@ -172,8 +172,9 @@ async def start(body: Start, request: Request, s: AsyncSession = Depends(get_db)
     now, ip = _now(), _ip(request)
     await s.execute(delete(LoginRequest).where(LoginRequest.created_at < now - timedelta(days=1)))
     recent = select(func.count()).select_from(LoginRequest)
-    if (await s.execute(recent.where(LoginRequest.email == email, LoginRequest.created_at >
-                                     now - timedelta(minutes=settings.login_minutes)))).scalar_one() \
+    # letters nobody signed in by: one used to sign in is no spam, so signing out and back in isn't held up
+    if (await s.execute(recent.where(LoginRequest.email == email, LoginRequest.consumed_at.is_(None),
+                                     LoginRequest.created_at > now - timedelta(minutes=settings.login_minutes)))).scalar_one() \
             >= settings.login_per_email:
         raise HTTPException(429, "Письмо уже отправлено — проверьте почту и папку «Спам». "
                                  "Новое можно запросить через несколько минут")

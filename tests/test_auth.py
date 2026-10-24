@@ -120,6 +120,16 @@ async def test_limits_letters_and_guesses():
         assert (await c.post("/auth/code", json={"request": req, "code": digits})).status_code == 429
 
 
+async def test_signing_out_and_in_again_is_not_held_by_the_letter_limit():
+    code = await invite(name="Оля")
+    async with client() as c:
+        for _ in range(4):  # one more than the limit: each letter is used to sign in, so none counts
+            r = await c.post("/auth/start", json={"email": "olya@example.com", "code": code})
+            assert r.status_code == 200
+            digits, _ = letter_to("olya@example.com")
+            assert (await c.post("/auth/code", json={"request": r.json()["request"], "code": digits})).status_code == 200
+
+
 async def test_limit_per_client_address(monkeypatch):
     from app.config import settings
     monkeypatch.setattr(settings, "login_per_ip_hour", 2)

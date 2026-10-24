@@ -362,3 +362,49 @@ async def test_moderation_flags_what_the_learner_says_and_blocks_on_the_third(mo
         assert (await s.get(Learner, l.id)).status == "blocked"
     async with client(token) as c:
         assert (await c.get("/me")).status_code in (401, 403)
+
+
+async def test_drift_climbs_from_unclear_activity_to_a_block_and_a_new_lesson_brings_it_back(monkeypatch):
+    import asyncio
+    from app import hosting
+    from app.models import SpendAlert
+    from lp import server
+    verdicts = []
+
+    async def verdict(S):
+        return {"verdict": verdicts.pop(0), "reason": "болтает вместо заданий"}
+    monkeypatch.setattr(hosting, "drift_verdict", verdict)
+
+    class Live:
+        said = []
+        task = asyncio.get_running_loop().create_future()
+        lang = "es"
+
+        async def emit(self, ev):
+            self.said.append(ev)
+    token, l = await learner("Болтун")
+    hosting._learner.set(l)
+    live = Live()
+    monkeypatch.setitem(server.sessions, f"{l.id}/es", live)
+
+    async def level():
+        async with sessionmaker()() as s:
+            return (await s.get(Learner, l.id)).drift_level
+    verdicts += ["ok", "suspicious", "suspicious", "problem", "problem"]
+    for want in (0, 1, 1, 2):  # fine; a doubt — unclear activity; another doubt — still that; off the lesson — flag
+        await hosting.drift(live)
+        assert await level() == want
+    assert live.said == []
+    await hosting.drift(live)  # off it again: the second flag, and the lemur warns
+    assert await level() == 3 and live.said == [{"type": "tutor", "text": hosting.LAST_WARNING}]
+
+    await hosting.guard("es", "learn")  # a new lesson: back to unclear activity, not to zero
+    assert await level() == 1
+    verdicts += ["problem", "problem", "problem"]
+    for _ in range(3):
+        await hosting.drift(live)
+    async with sessionmaker()() as s:
+        rows = [a.verdict for a in await s.scalars(select(SpendAlert).where(SpendAlert.learner_id == l.id,
+                                                                             SpendAlert.sid == "drift").order_by(SpendAlert.id))]
+        assert rows == ["watch", "watch", "flag", "flag", "flag", "flag", "spam"]
+        assert (await s.get(Learner, l.id)).status == "blocked"

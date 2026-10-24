@@ -75,6 +75,8 @@ class Settings(BaseSettings):
     # this many ever (self-harm aside — that is someone to help, never to block) blocks the learner
     moderation_model: str = "omni-moderation-latest"
     moderation_block_after: int = 3
+    # every few messages of the learner's own, a cheap model reads the lesson: still doing it, or gone off it
+    drift_model: str = "gpt-6-luna"
     # abuse limits, enforced by the server whatever the client does
     audio_max_seconds: int = 120
     upload_max_mb: float = 10

@@ -27,6 +27,9 @@ class Learner(Base):
     status: Mapped[str] = mapped_column(String(16), default="active")  # active | blocked
     blocked_reason: Mapped[str] = mapped_column(String(500), default="", server_default="")  # "авто: …" from app/abuse.py
     blocked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # going off the lesson (app/hosting.py: drift): 0 clean, 1 unclear activity, 2 and 3 flags (3 warned), 4 blocked;
+    # a new lesson brings it back to 1 at most, so someone who did it before gets to a flag sooner
+    drift_level: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     code: Mapped[str | None] = mapped_column(ForeignKey("access_codes.code"))  # the code they joined with
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

@@ -7,10 +7,10 @@ from __future__ import annotations
 import os
 import uuid
 from contextvars import ContextVar
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from starlette.requests import HTTPConnection
 
@@ -117,16 +117,94 @@ async def burst(lang: str, block: bool, count: int, seconds: int) -> None:
         s.add(SpendAlert(learner_id=learner.id, sid="burst", lang=lang, usd_by_window={}, session_usd=0,
                          verdict="spam" if block else "flag", reason=reason))
         if block:
-            await s.execute(update(Learner).where(Learner.id == learner.id).values(
-                status="blocked", blocked_reason=f"авто: {reason}"[:500], blocked_at=now))
-            await s.execute(update(AuthSession).where(AuthSession.learner_id == learner.id,
-                                                      AuthSession.revoked_at.is_(None)).values(revoked_at=now))
+            await _block(s, learner, reason, now)
         await s.commit()
     if block:
-        from lp import server
-        for k, live in list(server.sessions.items()):
-            if k.startswith(f"{learner.id}/") and live.task:
-                live.task.cancel()
+        _stop_lessons(learner)
+
+
+async def _block(s, learner: Learner, reason: str, now: datetime) -> None:
+    """Blocked and signed out everywhere (the caller commits, then stops the lessons)."""
+    await s.execute(update(Learner).where(Learner.id == learner.id).values(
+        status="blocked", blocked_reason=f"авто: {reason}"[:500], blocked_at=now))
+    await s.execute(update(AuthSession).where(AuthSession.learner_id == learner.id,
+                                              AuthSession.revoked_at.is_(None)).values(revoked_at=now))
+
+
+def _stop_lessons(learner: Learner) -> None:
+    from lp import server
+    for k, live in list(server.sessions.items()):
+        if k.startswith(f"{learner.id}/") and live.task:
+            live.task.cancel()
+
+
+# OpenAI moderation's categories, as the admin reads them; self-harm is someone to help, so it never counts to a block
+CATEGORY_RU = {"sexual": "сексуальное", "sexual/minors": "сексуальное с детьми", "harassment": "травля",
+               "harassment/threatening": "угрозы", "hate": "ненависть", "hate/threatening": "ненависть с угрозами",
+               "illicit": "незаконное", "illicit/violent": "незаконное с насилием", "self-harm": "самоповреждение",
+               "self-harm/intent": "самоповреждение: намерение", "self-harm/instructions": "самоповреждение: инструкции",
+               "violence": "насилие", "violence/graphic": "насилие в подробностях"}
+WHERE_RU = {"chat": "в чате", "voice": "голосом", "answer": "в задании"}
+# one flag short of a block, the lemur says so in the lesson
+LAST_WARNING = "Ещё один подобный запрос — и лемуру придётся посадить тебя на корабль к пингвинам (бан)."
+
+
+async def flagged(text: str) -> list[str]:
+    """The categories OpenAI's moderation flags in this text (free; a failure flags nothing)."""
+    from openai import AsyncOpenAI
+
+    import lp.openai_tutor as ot
+    try:
+        r = await AsyncOpenAI(api_key=ot._key()).moderations.create(model=settings.moderation_model, input=text)
+    except Exception:
+        return []
+    res = r.results[0]
+    if not res.flagged:
+        return []
+    return [k for k, on in res.categories.model_dump(by_alias=True).items() if on]
+
+
+async def moderate(lang: str, text: str, where: str) -> None:
+    """What the learner wrote or said (lp.server.learner_said): flagged — a red flag in the admin with the words;
+    self-harm alone — noted for a human to look at, never blocked; the Nth flag within the window — blocked."""
+    learner = _learner.get()
+    if learner is None:
+        return
+    cats = await flagged(text)
+    if not cats:
+        return
+    care = all(c.startswith("self-harm") for c in cats)
+    excerpt = text if len(text) <= 160 else text[:157] + "…"
+    reason = f"{', '.join(CATEGORY_RU.get(c, c) for c in cats)} — {WHERE_RU.get(where, where)}: «{excerpt}»"
+    now = datetime.now(timezone.utc)
+    async with sessionmaker()() as s:
+        alert = SpendAlert(learner_id=learner.id, sid="moderation", lang=lang, usd_by_window={}, session_usd=0,
+                           verdict="care" if care else "flag", reason=reason[:500])
+        s.add(alert)
+        await s.flush()
+        since = now - timedelta(hours=settings.moderation_window_hours)
+        flags = await s.scalar(select(func.count()).select_from(SpendAlert).where(
+            SpendAlert.learner_id == learner.id, SpendAlert.sid == "moderation", SpendAlert.verdict == "flag",
+            SpendAlert.created_at >= since))
+        block = not care and flags >= settings.moderation_block_after
+        warn = not care and flags == settings.moderation_block_after - 1
+        if block:
+            alert.verdict = "spam"
+            await _block(s, learner, f"{flags} сообщений с недопустимым за {settings.moderation_window_hours} ч, "
+                                     f"последнее: {reason}", now)
+        await s.commit()
+    if block:
+        _stop_lessons(learner)
+    elif warn:
+        await _say_in_lessons(learner, LAST_WARNING)
+
+
+async def _say_in_lessons(learner: Learner, text: str) -> None:
+    """The lemur's line in every lesson of this learner going now (it stays in the lesson's log)."""
+    from lp import server
+    for k, live in list(server.sessions.items()):
+        if k.startswith(f"{learner.id}/") and live.task and not live.task.done():
+            await live.emit({"type": "tutor", "text": text})
 
 
 def install():
@@ -134,5 +212,6 @@ def install():
     import lp.openai_tutor
     import lp.server
     lp.server.identify, lp.server.guard, lp.server.burst = identify, guard, burst
+    lp.server.moderate = moderate
     lp.openai_tutor.check, lp.openai_tutor.book = check, book
     return lp.server.app

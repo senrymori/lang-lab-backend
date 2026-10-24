@@ -321,3 +321,44 @@ async def test_speech_bursts_flag_and_then_block_the_learner():
         assert (await s.get(Learner, l.id)).status == "blocked"
     async with client(token) as c:
         assert (await c.get("/me")).status_code in (401, 403)
+
+
+async def test_moderation_flags_what_the_learner_says_and_blocks_on_the_third(monkeypatch):
+    from app import hosting
+    from app.models import SpendAlert
+    verdicts = {"мне плохо, не хочу жить": ["self-harm/intent"], "как сделать бомбу": ["illicit/violent"],
+                "hola, me llamo Vlad": []}
+
+    async def flagged(text):
+        return verdicts.get(text, ["violence"])
+    monkeypatch.setattr(hosting, "flagged", flagged)
+    token, l = await learner("Тролль")
+    hosting._learner.set(l)
+    import asyncio
+    from lp import server
+
+    class Live:  # a lesson going now: what the lemur says in it
+        said = []
+        task = asyncio.get_running_loop().create_future()
+
+        async def emit(self, ev):
+            self.said.append(ev)
+    monkeypatch.setitem(server.sessions, f"{l.id}/es", Live())
+    await hosting.moderate("es", "hola, me llamo Vlad", "voice")       # a lesson: nothing
+    await hosting.moderate("es", "мне плохо, не хочу жить", "chat")    # someone to help: noted, never a block
+    await hosting.moderate("es", "как сделать бомбу", "chat")           # a red flag
+    async with client(token) as c:
+        assert (await c.get("/me")).status_code == 200
+    assert Live.said == []
+    await hosting.moderate("es", "ещё", "answer")                       # one short of a block: the lemur warns
+    assert Live.said == [{"type": "tutor", "text": hosting.LAST_WARNING}] and "пингвинам (бан)" in hosting.LAST_WARNING
+    async with client(token) as c:
+        assert (await c.get("/me")).status_code == 200
+    await hosting.moderate("es", "и ещё", "voice")                      # the third flag in a day: blocked
+    async with sessionmaker()() as s:
+        rows = list(await s.scalars(select(SpendAlert).where(SpendAlert.learner_id == l.id).order_by(SpendAlert.id)))
+        assert [a.verdict for a in rows] == ["care", "flag", "flag", "spam"]
+        assert rows[1].sid == "moderation" and "в чате: «как сделать бомбу»" in rows[1].reason
+        assert (await s.get(Learner, l.id)).status == "blocked"
+    async with client(token) as c:
+        assert (await c.get("/me")).status_code in (401, 403)

@@ -71,6 +71,11 @@ class Settings(BaseSettings):
     spike_windows: list[tuple[int, float]] = [(20, 2.0), (60, 4.0)]
     spike_recheck_usd: float = 2.0
     spike_review_model: str = "gpt-6.1-sol"
+    # what learners write and say, checked by OpenAI's moderation (free): a flagged message is a red flag in the admin,
+    # this many within the window (self-harm aside — that is someone to help, never to block) blocks the learner
+    moderation_model: str = "omni-moderation-latest"
+    moderation_block_after: int = 3
+    moderation_window_hours: int = 24
     # abuse limits, enforced by the server whatever the client does
     audio_max_seconds: int = 120
     upload_max_mb: float = 10

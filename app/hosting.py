@@ -17,7 +17,7 @@ from starlette.requests import HTTPConnection
 from . import abuse, auth
 from .config import settings
 from .db import sessionmaker
-from .models import Learner, Spend
+from .models import AuthSession, Learner, Spend, SpendAlert
 
 _learner: ContextVar[Learner | None] = ContextVar("langlab_learner", default=None)
 
@@ -104,10 +104,35 @@ async def book(S, usd: float) -> None:
         await s.commit()
 
 
+async def burst(lang: str, block: bool, count: int, seconds: int) -> None:
+    """Speech asked for faster than a person speaks (lp.server._burst): a red flag in the admin's list of suspicious
+    spend, or — far past anything human — the learner blocked, signed out everywhere, a lesson going now stopped."""
+    learner = _learner.get()
+    if learner is None:
+        return
+    now = datetime.now(timezone.utc)
+    reason = (f"{count}+ распознаваний речи за {seconds} с — так быстро человек не говорит, это скрипт" if block
+              else f"{count} распознаваний речи за {seconds} с — быстрее, чем говорит человек")
+    async with sessionmaker()() as s:
+        s.add(SpendAlert(learner_id=learner.id, sid="burst", lang=lang, usd_by_window={}, session_usd=0,
+                         verdict="spam" if block else "flag", reason=reason))
+        if block:
+            await s.execute(update(Learner).where(Learner.id == learner.id).values(
+                status="blocked", blocked_reason=f"авто: {reason}"[:500], blocked_at=now))
+            await s.execute(update(AuthSession).where(AuthSession.learner_id == learner.id,
+                                                      AuthSession.revoked_at.is_(None)).values(revoked_at=now))
+        await s.commit()
+    if block:
+        from lp import server
+        for k, live in list(server.sessions.items()):
+            if k.startswith(f"{learner.id}/") and live.task:
+                live.task.cancel()
+
+
 def install():
     """lp's app with this server's hooks, ready to mount."""
     import lp.openai_tutor
     import lp.server
-    lp.server.identify, lp.server.guard = identify, guard
+    lp.server.identify, lp.server.guard, lp.server.burst = identify, guard, burst
     lp.openai_tutor.check, lp.openai_tutor.book = check, book
     return lp.server.app

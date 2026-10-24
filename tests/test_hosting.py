@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 from fastapi import HTTPException
-from sqlalchemy import update
+from sqlalchemy import select, update
 
 from app import auth, codes, hosting
 from app.config import settings
@@ -303,3 +303,21 @@ async def test_three_own_messages_unanswered_and_the_learner_waits_for_the_tutor
             s.inbox.get_nowait()
         await s.emit({"type": "status", "state": "idle"}, keep=False)  # the tutor took them all, showed nothing
         assert not s.held()
+
+
+async def test_speech_bursts_flag_and_then_block_the_learner():
+    from app import hosting
+    from app.models import SpendAlert
+    token, l = await learner("Скрипт")
+    hosting._learner.set(l)
+    await hosting.burst("en", False, 6, 5)  # a red flag: noted, nothing stops
+    async with client(token) as c:
+        assert (await c.get("/me")).status_code == 200
+    await hosting.burst("en", True, 20, 10)  # far past a person: blocked, signed out
+    async with sessionmaker()() as s:
+        verdicts = [a.verdict for a in (await s.scalars(select(SpendAlert).where(SpendAlert.learner_id == l.id)
+                                                         .order_by(SpendAlert.id)))]
+        assert verdicts == ["flag", "spam"]
+        assert (await s.get(Learner, l.id)).status == "blocked"
+    async with client(token) as c:
+        assert (await c.get("/me")).status_code in (401, 403)

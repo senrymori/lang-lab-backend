@@ -1,7 +1,8 @@
 """Language Lab server. Run (dev): uv run uvicorn app.main:app --reload
 
 Its own routes (sign-in, /me, /health) come first; everything else is the learning core's app (`lp`:
-the page, its API, the tutor's WebSocket), mounted at the root under this server's sign-in."""
+its API and the tutor's WebSocket), mounted at the root under this server's sign-in. lp's page is not
+served here: the interface ships inside the desktop app, a browser on this host gets nothing to open."""
 from __future__ import annotations
 
 import asyncio
@@ -11,7 +12,7 @@ from . import hosting
 
 hosting.configure()  # before lp is imported anywhere
 
-from fastapi import FastAPI  # noqa: E402
+from fastapi import FastAPI, HTTPException  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
 from . import admin, auth, cleanup, google  # noqa: E402
@@ -64,6 +65,14 @@ async def health():
     import lp.store  # noqa: F401  the core loads with this server's settings
     return {"ok": db, "db": db, "tutor": {"provider": settings.tutor_provider, "learn": settings.model_learn,
                                           "placement": settings.model_placement}}
+
+
+@app.get("/")
+@app.get("/manifest.webmanifest")
+@app.get("/static/{rest:path}")
+async def no_page(rest: str = ""):
+    """lp's page and its files: only in the app (lang-lab-platform), never in a browser."""
+    raise HTTPException(404)
 
 
 if settings.admin_ui_dir and settings.admin_ui_dir.is_dir():  # after the admin API's routes, which win

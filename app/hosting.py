@@ -19,9 +19,6 @@ from .config import settings
 from .db import sessionmaker
 from .models import Learner, Spend
 
-# the page and its scripts load before sign-in: the sign-in screen is part of them
-PUBLIC_PATHS = {"/", "/manifest.webmanifest"}
-PUBLIC_PREFIXES = ("/static/",)
 _learner: ContextVar[Learner | None] = ContextVar("langlab_learner", default=None)
 
 
@@ -62,9 +59,6 @@ async def spent_today(learner_id: uuid.UUID) -> float:
 async def identify(scope) -> bool:
     """lp's request or WebSocket → the signed-in learner, or False (401)."""
     import lp.core
-    path = scope.get("path", "")
-    if scope["type"] == "http" and (path in PUBLIC_PATHS or path.startswith(PUBLIC_PREFIXES)):
-        return True
     conn = HTTPConnection(scope)
     async with sessionmaker()() as s:
         found = await auth.signed_in(s, auth.token_of(conn))

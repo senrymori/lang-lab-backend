@@ -44,10 +44,10 @@ def no_tutor(monkeypatch):
     monkeypatch.setattr(lp.tutor.TutorSession, "run", idle)
 
 
-async def test_the_page_is_open_the_data_is_not():
+async def test_no_page_in_the_browser_the_data_is_closed():
     async with client() as c:
-        assert (await c.get("/")).status_code == 200
-        assert (await c.get("/static/app.js")).status_code == 200
+        for p in ("/", "/manifest.webmanifest", "/static/app.js", "/static/app.css"):
+            assert (await c.get(p)).status_code == 404, p
         assert (await c.get("/api/overview")).status_code == 401
         assert (await c.get("/api/overview", headers={"Authorization": "Bearer nonsense"})).status_code == 401
 

@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     # the admin's API (app/admin.py): off without a key
     admin_key: str | None = None
     admin_key_file: Path = Path.home() / ".config" / "lp" / "admin.key"
+    # access requests from the landing's form (app/intake.py): the site's worker sends them with this key; off without it
+    intake_key: str | None = None
+    intake_key_file: Path = Path.home() / ".config" / "lp" / "intake.key"
     admin_ui_dir: Path | None = None  # the admin page's build (lang-lab-admin/dist), served at /admin/
     # the admin's only host (Cloudflare Access in front): /admin is not found anywhere else, and this host serves
     # nothing but the admin. None (dev) — no split

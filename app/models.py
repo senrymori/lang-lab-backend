@@ -54,6 +54,17 @@ class AccessCode(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class AccessRequest(Base):
+    """Someone asking in through the landing's form (the worker checks Turnstile and hands it over, app/intake.py).
+    Kept only until the admin decides: an invite made from it, or a dismissal, deletes it."""
+    __tablename__ = "access_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(80))
+    email: Mapped[str] = mapped_column(String(320), unique=True)  # asking again only refreshes the name
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
 class Spend(Base):
     """Model spend per learner and day, for the admin."""
     __tablename__ = "spend"

@@ -1,4 +1,4 @@
-"""The admin's API (/admin/api): learners, access codes, spend, live lessons. One admin, one key:
+"""The admin's API (/admin/api): learners, access codes, access requests, spend, live lessons. One admin, one key:
 `Authorization: Bearer <key>` with the key from LANGLAB_ADMIN_KEY or ~/.config/lp/admin.key; without a key
 the admin is off. Cloudflare Access in front of admin.langlab.uk is a second lock, not the only one: the same
 app answers on api.langlab.uk too."""
@@ -11,13 +11,13 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import auth, codes, mail
 from .config import settings
 from .db import get_db
-from .models import AccessCode, AuthSession, Learner, Spend, SpendAlert
+from .models import AccessCode, AccessRequest, AuthSession, Learner, Spend, SpendAlert
 
 
 def _key() -> str:
@@ -51,9 +51,11 @@ async def overview(s: AsyncSession = Depends(get_db)):
     learners = (await s.execute(select(Learner.status, func.count()).group_by(Learner.status))).all()
     total = lambda since: select(func.coalesce(func.sum(Spend.usd), 0)).where(Spend.day >= since)  # noqa: E731
     today, this_month = (await s.scalar(total(_today()))), (await s.scalar(total(month)))
+    asking = await s.scalar(select(func.count()).select_from(AccessRequest))
     from lp import server
     return {"learners": {k: n for k, n in learners}, "max_learners": settings.max_learners,
-            "spent_today_usd": float(today), "spent_month_usd": float(this_month), "live_lessons": len(server.sessions)}
+            "spent_today_usd": float(today), "spent_month_usd": float(this_month), "live_lessons": len(server.sessions),
+            "requests": asking}
 
 
 @router.get("/learners")
@@ -128,6 +130,7 @@ class NewCode(BaseModel):
     kind: Literal["invite", "promo"] = "invite"
     max_uses: int = Field(1, ge=1, le=100000)
     expires_in_days: int | None = Field(None, ge=1, le=365)
+    request: int | None = None  # made from an access request: that request is done with
 
 
 @router.post("/codes")
@@ -144,6 +147,9 @@ async def new_code(body: NewCode, s: AsyncSession = Depends(get_db)):
         raise HTTPException(400, "Как репетитору к нему обращаться? Впишите имя")
     c = await codes.create(s, note=body.note, name=body.name, email=email, lessons=body.lessons, days=body.days,
                            kind=body.kind, max_uses=body.max_uses, expires_in_days=body.expires_in_days)
+    if body.request is not None:
+        await s.execute(delete(AccessRequest).where(AccessRequest.id == body.request))
+        await s.commit()
     if email:
         await _send_invite(s, c)
     return _code_json(c)
@@ -183,6 +189,22 @@ async def change_code(code: str, body: CodeChange, s: AsyncSession = Depends(get
     c.active = body.active
     await s.commit()
     return {"code": c.code, "active": c.active}
+
+
+@router.get("/requests")
+async def list_requests(s: AsyncSession = Depends(get_db)):
+    """Who asked in from the landing, oldest first: the first to ask is the first to answer."""
+    rows = (await s.execute(select(AccessRequest).order_by(AccessRequest.created_at))).scalars()
+    return [{"id": r.id, "name": r.name, "email": r.email, "created_at": r.created_at} for r in rows]
+
+
+@router.delete("/requests/{rid}")
+async def dismiss_request(rid: int, s: AsyncSession = Depends(get_db)):
+    """Dismissed: nothing of it is kept."""
+    if not (await s.execute(delete(AccessRequest).where(AccessRequest.id == rid))).rowcount:
+        raise HTTPException(404)
+    await s.commit()
+    return {"ok": True}
 
 
 @router.get("/spend")

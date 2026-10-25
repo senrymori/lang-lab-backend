@@ -248,6 +248,24 @@ async def test_a_practice_game_gets_a_pass_of_its_own(monkeypatch):
         lp.server._pass("kk", stale)
 
 
+async def test_with_no_lessons_left_games_are_closed_but_results_stay(monkeypatch):
+    import lp.practice
+    token, l = await learner("Лёва", days=None, lessons=1)
+    spec = {"id": "g1", "kind": "game", "title": "Слова", "status": "ready"}
+    monkeypatch.setattr(lp.practice, "load", lambda lang, pid: spec if pid == "g1" else None)
+    monkeypatch.setattr(lp.practice, "game_page", lambda lang, pid: "<html></html>")
+    async with client(token) as c:
+        r = await c.get("/api/practice/en/g1/page")
+        assert r.status_code == 200 and r.json()["pass"]
+        async with sessionmaker()() as s:
+            await s.execute(update(Learner).where(Learner.id == l.id).values(lessons_used=1))
+            await s.commit()
+        r = await c.get("/api/practice/en/g1/page")
+        assert r.status_code == 403 and "Уроки закончились" in r.json()["detail"]
+        assert (await c.get("/api/practice/en")).status_code == 200  # the list and its results stay
+        assert (await c.get("/api/progress/en")).status_code == 200
+
+
 async def test_profile_fields_have_a_limit_and_the_tutor_s_additions_are_retold(monkeypatch):
     import lp.core
     import lp.openai_tutor

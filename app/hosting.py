@@ -75,7 +75,8 @@ async def identify(scope) -> bool:
 
 
 async def guard(lang: str, mode: str) -> None:
-    """Before a lesson or a placement starts."""
+    """Before a lesson or a placement starts, and before a practice game opens: games use no lesson, but with none
+    left they are closed too (progress and results stay to look at)."""
     learner = _learner.get()
     if learner is None:
         raise HTTPException(401, "Войдите заново")
@@ -91,6 +92,8 @@ async def guard(lang: str, mode: str) -> None:
             await s.commit()
         if used is None:
             raise HTTPException(403, "Уроки закончились — напишите нам, чтобы добавить")
+    elif mode == "practice" and learner.lessons_used >= learner.lessons_total:
+        raise HTTPException(403, "Уроки закончились — напишите нам, чтобы добавить")
 
 
 async def check(S) -> None:

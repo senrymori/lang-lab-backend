@@ -85,7 +85,9 @@ class Settings(BaseSettings):
     # None — not set yet; until — when it runs out or renews):
     # LANGLAB_FIXED_COSTS='[{"name": "…", "usd_month": 12, "note": "…", "until": "2027-10-23"}]'
     fixed_costs: list[dict] = [
-        {"name": "VPS OVHcloud", "usd_month": None, "note": "сервер, база", "until": None},
+        {"name": "VPS OVHcloud", "usd_month": 28.70,
+         "note": "VPS-4 (8 vCPU, 24 ГБ, 200 ГБ) $27.50 + автобэкап $1.20; продление ручное — переезд на VPS полегче",
+         "until": "2026-11-23"},
         {"name": "Домен langlab.uk", "usd_month": 0.44, "note": "$5.30 в год, Cloudflare Registrar", "until": "2027-10-23"},
         {"name": "Cloudflare R2", "usd_month": 0, "note": "резервные копии и раздача приложения; бесплатно до 10 ГБ",
          "until": None},

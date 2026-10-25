@@ -102,3 +102,25 @@ async def test_spend_by_service_the_detail_and_the_free_allowances(admin, monkey
         assert {r["name"] for r in d["rows"]} == {"Боб"} and d["total_usd"] == pytest.approx(0.02, abs=1e-6)
         rows = (await c.get("/admin/api/learners", headers=admin)).json()
         assert next(x for x in rows if x["id"] == str(a.id))["spent_today_usd"] == pytest.approx(0.85)  # all services
+
+
+async def test_feedback_by_learner_and_language(admin):
+    # «Отзывы»: per learner and language — the level, the mean rating, each answer (a placement's told apart)
+    import contextvars
+
+    import lp.core
+    import lp.store
+    _, l = await learner("Вера")
+
+    def write():
+        lp.core.set_user(str(l.id))
+        lp.store.append("es", [{"type": "skill", "skill": "grammar", "level": "B1", "conf": 0.8, "src": "placement:final"},
+                               {"type": "feedback", "rating": 3, "comment": "много вопросов"}], sid="p1")
+        lp.store.append("es", [{"type": "feedback", "mode": "learn", "rating": 5, "disliked": ["песня"]}], sid="l1")
+    contextvars.copy_context().run(write)
+    async with client() as c:
+        rows = (await c.get("/admin/api/feedback", headers=admin)).json()
+    mine = [r for r in rows if r["learner_id"] == str(l.id)]
+    assert len(mine) == 1 and mine[0]["lang"] == "es" and mine[0]["level"].startswith("B1") and mine[0]["rating"] == 4
+    modes = {i["sid"]: i["mode"] for i in mine[0]["items"]}
+    assert modes == {"p1": "placement", "l1": "learn"}

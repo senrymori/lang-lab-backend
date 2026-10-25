@@ -4,6 +4,8 @@ the admin is off. Cloudflare Access in front of admin.langlab.uk is a second loc
 app answers on api.langlab.uk too."""
 from __future__ import annotations
 
+import asyncio
+import contextvars
 import hmac
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -266,3 +268,30 @@ async def alerts(limit: int = 50, s: AsyncSession = Depends(get_db)):
     return [{"id": a.id, "learner_id": str(a.learner_id), "name": name, "email": email, "sid": a.sid, "lang": a.lang,
              "usd_by_window": a.usd_by_window, "session_usd": float(a.session_usd), "verdict": a.verdict,
              "reason": a.reason, "created_at": a.created_at} for a, name, email in rows]
+
+
+@router.get("/feedback")
+async def feedback(s: AsyncSession = Depends(get_db)):
+    """What learners said about their lessons and placements (lp's `feedback` events): one row per learner and
+    language — their level there, the mean rating, each answer. The rows with the newest answer come first."""
+    import lp.core
+    import lp.store
+    learners = (await s.execute(select(Learner))).scalars().all()
+
+    def read() -> list[dict]:
+        out = []
+        for l in learners:
+            for lang in lp.core.LANGS:
+                if not (settings.data_dir / str(l.id) / lang / "events").is_dir():
+                    continue  # never started it (lang_dir would make the folders)
+                lp.core.set_user(str(l.id))
+                items = lp.store.feedback(lang)
+                if not items:
+                    continue
+                rated = [i["rating"] for i in items if i.get("rating")]
+                out.append({"learner_id": str(l.id), "name": l.name, "email": l.email, "lang": lang,
+                            "level": lp.store.level(lang), "rating": sum(rated) / len(rated) if rated else None,
+                            "items": items})
+        return sorted(out, key=lambda r: r["items"][0]["ts"], reverse=True)
+    # lp's files, read in a thread; the learner each read is for is set in a context of its own
+    return await asyncio.to_thread(contextvars.copy_context().run, read)

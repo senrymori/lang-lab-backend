@@ -3,3 +3,5 @@ __pycache__/
 var/
 .idea/
 .env
+.DS_Store
+*.log

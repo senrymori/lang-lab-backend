@@ -280,23 +280,30 @@ async def alerts(limit: int = 50, s: AsyncSession = Depends(get_db)):
 async def setups(s: AsyncSession = Depends(get_db)):
     """How learners set their lessons up before they start (lp's `setup` events, lp/setup.py): how they start —
     set up, left to the lemur, as last time — over every lesson; what to work on and what to talk about over the ones
-    set up by hand (as-last-time repeats would count an old choice again); and every word of their own, newest first,
-    to see what the cards are missing."""
+    set up by hand (as-last-time repeats would count an old choice again); how many learners have each topic in their
+    pool (lp/topics.py — the lemur links what they say to one topic, so «я бизнесмен» and «для бизнеса» count once);
+    and every word of their own, newest first, with the topic the lemur linked it to — to see what the cards miss."""
     import lp.core
     import lp.setup
     import lp.store
+    import lp.topics
     learners = (await s.execute(select(Learner))).scalars().all()
 
     def read() -> dict:
         how = {k: 0 for k in lp.setup.HOWS}
         focus = {k: 0 for k in lp.setup.FOCUS}
-        topics = {k: 0 for k in lp.setup.TOPICS}
+        chosen: dict[str, int] = {}
+        pools: dict[str, int] = {}
         own = []
         for l in learners:
+            lp.core.set_user(str(l.id))
+            pool = lp.topics.mine() if (settings.data_dir / str(l.id)).is_dir() else []
+            for e in pool:
+                pools[e["key"]] = pools.get(e["key"], 0) + 1
+            linked = {e["from"]: e["title"] for e in pool if e.get("from")}
             for lang in lp.core.LANGS:
                 if not (settings.data_dir / str(l.id) / lang / "events").is_dir():
                     continue
-                lp.core.set_user(str(l.id))
                 for e in lp.store.load_events(lang):
                     if e["type"] != "setup":
                         continue
@@ -305,17 +312,21 @@ async def setups(s: AsyncSession = Depends(get_db)):
                         continue
                     if e.get("focus") in focus:
                         focus[e["focus"]] += 1
-                    if e.get("topic") in topics:
-                        topics[e["topic"]] += 1
-                    for key, what in (("focus_own", "Что подтянуть"), ("topic_own", "Своя тема"), ("topic_detail", "Конкретно")):
+                    for t in e.get("topics") or []:
+                        chosen[t] = chosen.get(t, 0) + 1
+                    for key, what in (("focus_own", "Что подтянуть"), ("topic_own", "Своя тема"), ("topic_detail", "Уточнение темы")):
                         if e.get(key):
                             own.append({"learner_id": str(l.id), "name": l.name, "email": l.email, "lang": lang,
                                         "ts": e["ts"], "what": what, "text": e[key],
-                                        "topic": lp.setup.TOPICS[e["topic"]][0] if key == "topic_detail" and e.get("topic") else ""})
-        card = lambda counts, titles: sorted(  # noqa: E731
-            [{"key": k, "title": titles[k][0], "n": n} for k, n in counts.items()], key=lambda r: -r["n"])
-        return {"total": sum(how.values()), "how": how, "focus": card(focus, lp.setup.FOCUS),
-                "topics": card(topics, lp.setup.TOPICS), "own": sorted(own, key=lambda r: r["ts"], reverse=True)}
+                                        "topic": next((t for said, t in linked.items() if e[key] in said or said in e[key]), "")})
+        cat = {**lp.topics.catalog(), "any": lp.setup.ANY[0]}
+        rows = lambda counts, title: sorted(  # noqa: E731
+            [{"key": k, "title": title(k), "n": n} for k, n in counts.items()], key=lambda r: -r["n"])
+        return {"total": sum(how.values()), "how": how,
+                "focus": rows(focus, lambda k: lp.setup.FOCUS[k][0]),
+                "topics": rows({**{k: 0 for k in lp.topics.BASE}, **chosen}, lambda k: cat.get(k, k)),
+                "pools": rows(pools, lambda k: cat.get(k, k)),
+                "own": sorted(own, key=lambda r: r["ts"], reverse=True)}
     return await asyncio.to_thread(contextvars.copy_context().run, read)
 
 

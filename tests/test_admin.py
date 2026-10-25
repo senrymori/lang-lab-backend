@@ -150,17 +150,25 @@ async def test_a_lesson_over_is_not_on_a_lesson_and_one_stepped_away_is_paused(a
 
 async def test_lesson_setups_counted_and_their_own_words(admin):
     """What learners choose before a lesson: how they start over all lessons, the cards over the ones set up by hand,
-    and their own words — to see what the choices are missing."""
+    topics by how many learners have them (two saying «бизнес» their own way count once each, under one topic), and
+    their own words with the topic the lemur linked them to."""
     import lp.core
     import lp.store
-    _, l = await learner("Тимур")
-    lp.core.use_learner(str(l.id), "Тимур")
-    lp.store.append("en", [{"type": "setup", "how": "custom", "focus": "grammar", "topic": "games", "topic_detail": "Dota 2"}])
-    lp.store.append("en", [{"type": "setup", "how": "custom", "focus_own": "фразовые глаголы для работы", "topic": "any"}])
-    lp.store.append("en", [{"type": "setup", "how": "last", "focus": "grammar", "topic": "games"}])
+    import lp.topics
+    (_, a), (_, b) = await learner("Тимур"), await learner("Лена")
+    lp.core.use_learner(str(a.id), "Тимур")
+    lp.store.append("en", [{"type": "setup", "how": "custom", "focus": "grammar", "topics": ["games", "films"], "topic_detail": "Dota 2"}])
+    lp.store.append("en", [{"type": "setup", "how": "custom", "focus_own": "фразовые глаголы для работы", "topic_own": "я бизнесмен"}])
+    lp.store.append("en", [{"type": "setup", "how": "last", "focus": "grammar", "topics": ["games"]}])
     lp.store.append("en", [{"type": "setup", "how": "lemur"}])
+    lp.topics.add(["Бизнес"], "я бизнесмен")  # the lemur linked it
+    lp.core.use_learner(str(b.id), "Лена")
+    lp.topics.add(["бизнес"], "мне для бизнеса")  # another learner, the same topic
     async with client() as c:
         r = (await c.get("/admin/api/setups", headers=admin)).json()
     assert r["how"] == {"custom": 2, "lemur": 1, "last": 1} and r["total"] == 4
     assert r["focus"][0] == {"key": "grammar", "title": "Грамматика", "n": 1}  # «как в прошлый раз» not counted again
-    assert {(o["what"], o["text"]) for o in r["own"]} == {("Конкретно", "Dota 2"), ("Что подтянуть", "фразовые глаголы для работы")}
+    assert {t["key"]: t["n"] for t in r["topics"]}["games"] == 1
+    assert r["pools"][0] == {"key": "бизнес", "title": "Бизнес", "n": 2}
+    own = {(o["what"], o["text"]): o["topic"] for o in r["own"]}
+    assert own[("Своя тема", "я бизнесмен")] == "Бизнес" and ("Уточнение темы", "Dota 2") in own

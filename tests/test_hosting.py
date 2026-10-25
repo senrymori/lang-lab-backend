@@ -408,3 +408,17 @@ async def test_drift_climbs_from_unclear_activity_to_a_block_and_a_new_lesson_br
                                                                              SpendAlert.sid == "drift").order_by(SpendAlert.id))]
         assert rows == ["watch", "watch", "flag", "flag", "flag", "flag", "spam"]
         assert (await s.get(Learner, l.id)).status == "blocked"
+
+
+async def test_an_app_older_than_the_minimum_is_asked_to_update(monkeypatch):
+    from app.config import settings
+    token, _ = await learner("Старая версия")
+    async with client(token) as c:
+        old = {"x-langlab-version": "1.20261025.100"}
+        assert (await c.get("/me", headers=old)).status_code == 200  # no minimum set: anything goes
+        monkeypatch.setattr(settings, "min_app_version", "1.20261026.0")
+        r = await c.get("/me", headers=old)
+        assert r.status_code == 426 and r.json()["min_version"] == "1.20261026.0"
+        assert (await c.get("/me", headers={"x-langlab-version": "1.20261026.5"})).status_code == 200
+        assert (await c.get("/me")).status_code == 200  # no version said (a browser, the admin): not checked
+        assert (await c.get("/health", headers=old)).status_code == 200

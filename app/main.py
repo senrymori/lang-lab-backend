@@ -56,6 +56,24 @@ async def admin_only_on_its_host(request, call_next):
         if on_admin and not is_admin:
             return RedirectResponse("/admin/")
     return await call_next(request)
+
+
+def _version(v: str) -> tuple[int, ...]:
+    return tuple(int(x) for x in v.split(".") if x.isdigit())
+
+
+@app.middleware("http")
+async def app_new_enough(request, call_next):
+    """The app says its version on every request (X-LangLab-Version); one older than LANGLAB_MIN_APP_VERSION gets 426,
+    and the app shows «нужна новая версия» with its update ready to install — for a server change the old app can't
+    follow. No header (the admin, a browser) or no minimum set: nothing is checked."""
+    v = request.headers.get("x-langlab-version")
+    if v and settings.min_app_version and request.url.path != "/health" \
+            and _version(v) < _version(settings.min_app_version):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"detail": "Нужна новая версия LangLab", "min_version": settings.min_app_version},
+                            status_code=426)
+    return await call_next(request)
 app.include_router(auth.router)
 app.include_router(google.router)
 app.include_router(admin.router)

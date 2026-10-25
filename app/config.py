@@ -26,7 +26,9 @@ class Settings(BaseSettings):
     # letters: resend | console | memory (tests); auto — resend when a key is found, else console
     mail_backend: str = "auto"
     mail_from: str = "LangLab <login@mail.langlab.uk>"
-    privacy_url: str = "https://langlab.uk/privacy/"  # the privacy policy: named in the letters that make an account
+    privacy_url: str = "https://langlab.uk/privacy/"
+    # the oldest app version the server still talks to (app/main.py: app_new_enough); empty — any
+    min_app_version: str = ""  # the privacy policy: named in the letters that make an account
     download_url: str = ""  # where the app is downloaded from, for the invite letter (none yet: the letter skips it)
     resend_key: str | None = None
     resend_key_file: Path = Path.home() / ".config" / "lp" / "resend.key"

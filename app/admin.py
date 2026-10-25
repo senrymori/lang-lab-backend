@@ -310,8 +310,9 @@ async def setups(s: AsyncSession = Depends(get_db)):
                     how[e["how"]] = how.get(e["how"], 0) + 1
                     if e["how"] != "custom":
                         continue
-                    if e.get("focus") in focus:
-                        focus[e["focus"]] += 1
+                    for f in lp.setup.as_list(e.get("focus")):  # several since the second questionnaire
+                        if f in focus:
+                            focus[f] += 1
                     for t in e.get("topics") or []:
                         chosen[t] = chosen.get(t, 0) + 1
                     for key, what in (("focus_own", "Что подтянуть"), ("topic_own", "Своя тема"), ("topic_detail", "Уточнение темы")):

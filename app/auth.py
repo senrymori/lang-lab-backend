@@ -83,14 +83,25 @@ def _dev_code() -> str | None:
     return code if code and local and re.fullmatch(r"\d{6}", code) else None
 
 
+# an account is made by signing in from a letter: the letter says what that means
+CONSENT = "Входя в приложение, вы создаёте аккаунт и принимаете политику конфиденциальности"
+
+
+def _consent_html() -> str:
+    url = html.escape(settings.privacy_url)
+    return f'<p style="font-size:13px;color:#666">{CONSENT}: <a href="{url}" style="color:#666">{url}</a></p>'
+
+
 def _letter(purpose: str, name: str, digits: str, link: str) -> tuple[str, str, str]:
     hello = f"Здравствуйте, {name}!" if name else "Здравствуйте!"
     what = "подтвердить адрес и начать заниматься" if purpose == "register" else "войти в Language Lab"
+    new = purpose == "register"
     subject = f"Код для входа в Language Lab: {digits}"
     text = (f"{hello}\n\nЧтобы {what}, откройте ссылку и нажмите «Войти»:\n{link}\n\n"
             f"Или введите в приложении код: {digits}\n\n"
             f"Ссылка и код действуют {settings.login_minutes} минут. Если вы не входили в Language Lab — "
-            "просто не обращайте внимания на это письмо.")
+            "просто не обращайте внимания на это письмо."
+            + (f"\n\n{CONSENT}: {settings.privacy_url}" if new else ""))
     html_ = f"""<div style="font-family:Inter,-apple-system,Segoe UI,Roboto,sans-serif;max-width:480px;margin:0 auto;
 padding:24px;color:#111">
 <p style="font-size:16px">{html.escape(hello)}</p>
@@ -100,7 +111,7 @@ padding:12px 28px;border-radius:14px;font-weight:600;font-size:16px">Войти<
 <p style="font-size:16px">Или введите в приложении код:</p>
 <p style="font-size:32px;font-weight:700;letter-spacing:6px;margin:8px 0 24px">{digits}</p>
 <p style="font-size:13px;color:#666">Ссылка и код действуют {settings.login_minutes} минут. Если вы не входили
-в Language Lab — просто не обращайте внимания на это письмо.</p></div>"""
+в Language Lab — просто не обращайте внимания на это письмо.</p>{_consent_html() if new else ""}</div>"""
     return subject, text, html_
 
 
@@ -309,6 +320,7 @@ async def _open(s: AsyncSession, learner: Learner, request: Request) -> JSONResp
 
 # --- an invite mailed from the admin: its link registers them, no code to type ---
 
+LANGUAGES = "английского, испанского, итальянского и казахского"
 INVITE_LINK = "langlab://invite?t="  # handled by the app's main process (lp desktop/main.js), never by its page
 
 
@@ -317,21 +329,23 @@ def invite_letter(name: str, code: str, link: str) -> tuple[str, str, str]:
     hello = f"Здравствуйте, {name}!" if name else "Здравствуйте!"
     get = f"Скачайте приложение: {settings.download_url}\n" if settings.download_url else ""
     subject = "Приглашение в Language Lab"
-    text = (f"{hello}\n\nВас пригласили в Language Lab — репетитора английского, испанского и казахского.\n\n"
+    text = (f"{hello}\n\nВас пригласили в Language Lab — репетитора {LANGUAGES}.\n\n"
             f"{get}Чтобы начать, откройте ссылку на этом Mac и нажмите «Открыть Language Lab»:\n{link}\n\n"
-            f"Или откройте приложение и введите код приглашения: {code}\nВойти нужно с этой почты.")
+            f"Или откройте приложение и введите код приглашения: {code}\nВойти нужно с этой почты.\n\n"
+            f"{CONSENT}: {settings.privacy_url}")
     dl = (f'<p style="font-size:16px">Сначала скачайте приложение: <a href="{html.escape(settings.download_url)}" '
           f'style="color:#4116C9">{html.escape(settings.download_url)}</a></p>') if settings.download_url else ""
     html_ = f"""<div style="font-family:Inter,-apple-system,Segoe UI,Roboto,sans-serif;max-width:480px;margin:0 auto;
 padding:24px;color:#111">
 <p style="font-size:16px">{html.escape(hello)}</p>
-<p style="font-size:16px">Вас пригласили в Language Lab — репетитора английского, испанского и казахского.</p>{dl}
+<p style="font-size:16px">Вас пригласили в Language Lab — репетитора {LANGUAGES}.</p>{dl}
 <p style="font-size:16px">Откройте на своём Mac:</p>
 <p><a href="{html.escape(link)}" style="display:inline-block;background:#4116C9;color:#fff;text-decoration:none;
 padding:12px 28px;border-radius:14px;font-weight:600;font-size:16px">Начать</a></p>
 <p style="font-size:16px">Или откройте приложение и введите код приглашения:</p>
 <p style="font-size:24px;font-weight:700;letter-spacing:3px;margin:8px 0 24px">{code}</p>
-<p style="font-size:13px;color:#666">Войти нужно с этой почты. Приглашение личное — не пересылайте его.</p></div>"""
+<p style="font-size:13px;color:#666">Войти нужно с этой почты. Приглашение личное — не пересылайте его.</p>
+{_consent_html()}</div>"""
     return subject, text, html_
 
 

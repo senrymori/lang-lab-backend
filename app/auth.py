@@ -121,15 +121,30 @@ APP_LINK = "langlab://signed-in"  # the desktop app's scheme (lp desktop/main.js
 def _page(title: str, body: str) -> HTMLResponse:
     return HTMLResponse(f"""<!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>{title} — LangLab</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;600&family=Sofia+Sans+Extra+Condensed:wght@900&display=swap">
 <style>
-:root{{--bg:#000;--card:rgba(44,44,52,.6);--text:#fff;--muted:#9a9aa6;--accent:#4116C9}}
-body{{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);
-color:var(--text);font:16px/1.5 Inter,-apple-system,Segoe UI,Roboto,sans-serif}}
-.card{{background:var(--card);border-radius:14px;padding:32px;margin:16px;max-width:400px;text-align:center}}
-h1{{font-size:22px;margin:0 0 12px}} p{{color:var(--muted);margin:0 0 20px}}
-button,a.btn{{display:inline-block;background:var(--accent);color:#fff;border:0;border-radius:14px;padding:12px 32px;
-font:600 16px Inter,sans-serif;cursor:pointer;text-decoration:none}}
-</style></head><body><div class="card"><h1>{title}</h1>{body}</div></body></html>""")
+:root{{--paper:#f4e8dc;--ink:#300a10;--ink-soft:#6e4a45;--fur:#5f242a;--fur-deep:#300a10;--on-fur:#ebcfbb;--amber:#d87e38;
+--font-display:"Sofia Sans Extra Condensed","Arial Narrow",sans-serif;--font-text:"Golos Text","Helvetica Neue",Arial,sans-serif}}
+*{{box-sizing:border-box}}
+body{{margin:0;min-height:100vh;background:var(--paper);color:var(--ink);font:400 18px/27px var(--font-text);
+-webkit-font-smoothing:antialiased;overflow:hidden}}
+.mark{{position:absolute;top:24px;left:40px;display:inline-flex;align-items:center;gap:10px;font:900 30px/1 var(--font-display);
+letter-spacing:.02em}} .mark img{{height:32px}} .mark b{{color:var(--amber)}}
+.lemur{{position:fixed;right:clamp(16px,10vw,200px);bottom:0;height:calc(100vh - 40px);max-height:880px;pointer-events:none}}
+.panel{{position:relative;z-index:1;padding:120px 40px 40px;max-width:600px;display:flex;flex-direction:column;
+gap:26px;align-items:flex-start}}
+h1{{margin:0;font:900 96px/.86 var(--font-display);text-transform:uppercase;max-width:520px}}
+p{{margin:0}}
+a.btn,button{{display:inline-flex;background:var(--fur);color:var(--on-fur);border:0;border-radius:2px;padding:18px 28px;
+font:600 17px/20px var(--font-text);cursor:pointer;text-decoration:none;transition:background-color .35s ease}}
+a.btn:hover,button:hover{{background:var(--fur-deep)}}
+:focus-visible{{outline:2px solid var(--amber);outline-offset:3px}}
+@media (max-width:760px){{body{{overflow:auto}} .lemur{{opacity:.18}} .mark{{left:16px}}
+.panel{{padding:96px 16px 40px}} h1{{font-size:64px}}}}
+</style></head><body><span class="mark"><img src="https://langlab.uk/img/logo.svg" alt="">LANG<b>·</b>LAB</span>
+<img class="lemur" src="https://langlab.uk/img/lemur-hand.webp" alt="">
+<main class="panel"><h1>{title}</h1>{body}</main></body></html>""")
 
 
 # --- endpoints ---

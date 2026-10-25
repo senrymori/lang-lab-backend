@@ -81,11 +81,15 @@ class Settings(BaseSettings):
     letters_day_limit: int = 100
     letters_month_limit: int = 3000
     # what Language Lab costs every month regardless of lessons, only shown in the admin as a reminder (USD a month;
-    # None — not set yet): LANGLAB_FIXED_COSTS='[{"name": "…", "usd_month": 12, "note": "…"}]'
+    # None — not set yet; until — when it runs out or renews):
+    # LANGLAB_FIXED_COSTS='[{"name": "…", "usd_month": 12, "note": "…", "until": "2027-10-23"}]'
     fixed_costs: list[dict] = [
-        {"name": "VPS OVHcloud", "usd_month": None, "note": "сервер, база"},
-        {"name": "Cloudflare", "usd_month": None, "note": "R2: резервные копии и раздача приложения; домен langlab.uk"},
-        {"name": "Apple Developer Program", "usd_month": 8.25, "note": "$99 в год: подпись и нотаризация приложения"},
+        {"name": "VPS OVHcloud", "usd_month": None, "note": "сервер, база", "until": None},
+        {"name": "Домен langlab.uk", "usd_month": 0.44, "note": "$5.30 в год, Cloudflare Registrar", "until": "2027-10-23"},
+        {"name": "Cloudflare R2", "usd_month": 0, "note": "резервные копии и раздача приложения; бесплатно до 10 ГБ",
+         "until": None},
+        {"name": "Apple Developer Program", "usd_month": 8.25, "note": "$99 в год: подпись и нотаризация приложения",
+         "until": None},
     ]
     # every few messages of the learner's own, a cheap model reads the lesson: still doing it, or gone off it
     drift_model: str = "gpt-6-luna"

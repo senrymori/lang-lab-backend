@@ -276,8 +276,51 @@ async def alerts(limit: int = 50, s: AsyncSession = Depends(get_db)):
              "reason": a.reason, "created_at": a.created_at} for a, name, email in rows]
 
 
+@router.get("/languages")
+async def languages(s: AsyncSession = Depends(get_db)):
+    """Each language at a glance: how many learners took it up, lessons and placements done, the levels they're at,
+    the mean rating of their feedback, and what the tutor's model cost there — over 30 days and all time (lp's
+    usage.jsonl, a line per model call, its mode and cost; speech and voices aren't per language, they're on «Расходы»)."""
+    import lp.core
+    import lp.store
+    import lp.usage
+    learners = (await s.execute(select(Learner))).scalars().all()
+    since = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+
+    def read() -> list[dict]:
+        out = []
+        for lang, info in lp.core.LANGS.items():
+            row = {"lang": lang, "name": info["name"], "learners": 0, "lessons": 0, "placements": 0, "levels": {},
+                   "ratings": [], "usd_30d": 0.0, "usd_total": 0.0}
+            for l in learners:
+                if not (settings.data_dir / str(l.id) / lang / "events").is_dir():
+                    continue
+                lp.core.set_user(str(l.id))
+                calls = lp.usage.load(lang)
+                if not calls and not lp.store.load_events(lang):
+                    continue
+                row["learners"] += 1
+                modes = {}
+                for c in calls:
+                    modes.setdefault(c["sid"], c["kind"])
+                    row["usd_total"] += c["cost"]
+                    if c["ts"] >= since:
+                        row["usd_30d"] += c["cost"]
+                row["lessons"] += sum(1 for m in modes.values() if m == "learn")
+                row["placements"] += sum(1 for m in modes.values() if m == "placement")
+                if level := lp.store.level(lang):
+                    row["levels"][level] = row["levels"].get(level, 0) + 1
+                row["ratings"] += [f["rating"] for f in lp.store.feedback(lang) if f.get("rating")]
+            r = row.pop("ratings")
+            row["rating"] = sum(r) / len(r) if r else None
+            row["usd_30d"], row["usd_total"] = round(row["usd_30d"], 2), round(row["usd_total"], 2)
+            out.append(row)
+        return out
+    return await asyncio.to_thread(contextvars.copy_context().run, read)
+
+
 @router.get("/setups")
-async def setups(s: AsyncSession = Depends(get_db)):
+async def setups(lang: str | None = None, s: AsyncSession = Depends(get_db)):
     """How learners set their lessons up before they start (lp's `setup` events, lp/setup.py): how they start —
     set up, left to the lemur, as last time — over every lesson; what to work on and what to talk about over the ones
     set up by hand (as-last-time repeats would count an old choice again); how many learners have each topic in their
@@ -301,10 +344,10 @@ async def setups(s: AsyncSession = Depends(get_db)):
             for e in pool:
                 pools[e["key"]] = pools.get(e["key"], 0) + 1
             linked = {e["from"]: e["title"] for e in pool if e.get("from")}
-            for lang in lp.core.LANGS:
-                if not (settings.data_dir / str(l.id) / lang / "events").is_dir():
+            for lang_ in lp.core.LANGS:
+                if (lang and lang_ != lang) or not (settings.data_dir / str(l.id) / lang_ / "events").is_dir():
                     continue
-                for e in lp.store.load_events(lang):
+                for e in lp.store.load_events(lang_):
                     if e["type"] != "setup":
                         continue
                     how[e["how"]] = how.get(e["how"], 0) + 1
@@ -317,7 +360,7 @@ async def setups(s: AsyncSession = Depends(get_db)):
                         chosen[t] = chosen.get(t, 0) + 1
                     for key, what in (("focus_own", "Что подтянуть"), ("topic_own", "Своя тема"), ("topic_detail", "Уточнение темы")):
                         if e.get(key):
-                            own.append({"learner_id": str(l.id), "name": l.name, "email": l.email, "lang": lang,
+                            own.append({"learner_id": str(l.id), "name": l.name, "email": l.email, "lang": lang_,
                                         "ts": e["ts"], "what": what, "text": e[key],
                                         "topic": next((t for said, t in linked.items() if e[key] in said or said in e[key]), "")})
         cat = {**lp.topics.catalog(), "any": lp.setup.ANY[0]}

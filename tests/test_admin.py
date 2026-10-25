@@ -172,3 +172,27 @@ async def test_lesson_setups_counted_and_their_own_words(admin):
     assert r["pools"][0] == {"key": "бизнес", "title": "Бизнес", "n": 2}
     own = {(o["what"], o["text"]): o["topic"] for o in r["own"]}
     assert own[("Своя тема", "я бизнесмен")] == "Бизнес" and ("Уточнение темы", "Dota 2") in own
+
+
+async def test_each_language_at_a_glance(admin):
+    """Per language: learners who took it up, lessons and placements, their levels, the mean rating, the tutor's cost."""
+    import lp.core
+    import lp.store
+    import lp.usage
+    (_, a), (_, b) = await learner("Ира"), await learner("Олег")
+    lp.core.use_learner(str(a.id), "Ира")
+    lp.usage.record("it", "placement", "s1", 0.3, {})
+    lp.usage.record("it", "learn", "s2", 0.4, {})
+    lp.store.append("it", [{"type": "skill", "skill": "grammar", "level": "B1", "conf": 0.8, "src": "placement"},
+                           {"type": "feedback", "rating": 5}], sid="s1")
+    lp.store.append("it", [{"type": "setup", "how": "lemur"}], sid="s2")
+    lp.core.use_learner(str(b.id), "Олег")
+    lp.usage.record("it", "learn", "s3", 0.5, {})
+    lp.store.append("it", [{"type": "feedback", "rating": 3}], sid="s3")
+    async with client() as c:
+        rows = {r["lang"]: r for r in (await c.get("/admin/api/languages", headers=admin)).json()}
+        it = rows["it"]
+        assert it["learners"] == 2 and it["lessons"] == 2 and it["placements"] == 1
+        assert it["levels"] == {"B1": 1} and it["rating"] == 4.0 and it["usd_total"] == 1.2 and it["usd_30d"] == 1.2
+        assert (await c.get("/admin/api/setups?lang=it", headers=admin)).json()["how"]["lemur"] == 1
+        assert (await c.get("/admin/api/setups?lang=kk", headers=admin)).json()["how"]["lemur"] == 0

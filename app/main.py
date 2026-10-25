@@ -32,6 +32,7 @@ async def lifespan(app: FastAPI):
     loop = asyncio.get_running_loop()
     lp.tts.on_azure = lambda chars: asyncio.run_coroutine_threadsafe(hosting.count("azure_chars", chars), loop)
     sweeper = asyncio.create_task(cleanup.every())
+    server.finish_wrapups()  # lessons broken off before the restart: their practice and notes, done now
     yield
     sweeper.cancel()
     for s in server.sessions.values():

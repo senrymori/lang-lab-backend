@@ -276,6 +276,49 @@ async def alerts(limit: int = 50, s: AsyncSession = Depends(get_db)):
              "reason": a.reason, "created_at": a.created_at} for a, name, email in rows]
 
 
+@router.get("/setups")
+async def setups(s: AsyncSession = Depends(get_db)):
+    """How learners set their lessons up before they start (lp's `setup` events, lp/setup.py): how they start —
+    set up, left to the lemur, as last time — over every lesson; what to work on and what to talk about over the ones
+    set up by hand (as-last-time repeats would count an old choice again); and every word of their own, newest first,
+    to see what the cards are missing."""
+    import lp.core
+    import lp.setup
+    import lp.store
+    learners = (await s.execute(select(Learner))).scalars().all()
+
+    def read() -> dict:
+        how = {k: 0 for k in lp.setup.HOWS}
+        focus = {k: 0 for k in lp.setup.FOCUS}
+        topics = {k: 0 for k in lp.setup.TOPICS}
+        own = []
+        for l in learners:
+            for lang in lp.core.LANGS:
+                if not (settings.data_dir / str(l.id) / lang / "events").is_dir():
+                    continue
+                lp.core.set_user(str(l.id))
+                for e in lp.store.load_events(lang):
+                    if e["type"] != "setup":
+                        continue
+                    how[e["how"]] = how.get(e["how"], 0) + 1
+                    if e["how"] != "custom":
+                        continue
+                    if e.get("focus") in focus:
+                        focus[e["focus"]] += 1
+                    if e.get("topic") in topics:
+                        topics[e["topic"]] += 1
+                    for key, what in (("focus_own", "Что подтянуть"), ("topic_own", "Своя тема"), ("topic_detail", "Конкретно")):
+                        if e.get(key):
+                            own.append({"learner_id": str(l.id), "name": l.name, "email": l.email, "lang": lang,
+                                        "ts": e["ts"], "what": what, "text": e[key],
+                                        "topic": lp.setup.TOPICS[e["topic"]][0] if key == "topic_detail" and e.get("topic") else ""})
+        card = lambda counts, titles: sorted(  # noqa: E731
+            [{"key": k, "title": titles[k][0], "n": n} for k, n in counts.items()], key=lambda r: -r["n"])
+        return {"total": sum(how.values()), "how": how, "focus": card(focus, lp.setup.FOCUS),
+                "topics": card(topics, lp.setup.TOPICS), "own": sorted(own, key=lambda r: r["ts"], reverse=True)}
+    return await asyncio.to_thread(contextvars.copy_context().run, read)
+
+
 @router.get("/feedback")
 async def feedback(s: AsyncSession = Depends(get_db)):
     """What learners said about their lessons and placements (lp's `feedback` events): one row per learner and

@@ -146,3 +146,21 @@ async def test_a_lesson_over_is_not_on_a_lesson_and_one_stepped_away_is_paused(a
     finally:
         for k in sessions:
             server.sessions.pop(k, None)
+
+
+async def test_lesson_setups_counted_and_their_own_words(admin):
+    """What learners choose before a lesson: how they start over all lessons, the cards over the ones set up by hand,
+    and their own words — to see what the choices are missing."""
+    import lp.core
+    import lp.store
+    _, l = await learner("Тимур")
+    lp.core.use_learner(str(l.id), "Тимур")
+    lp.store.append("en", [{"type": "setup", "how": "custom", "focus": "grammar", "topic": "games", "topic_detail": "Dota 2"}])
+    lp.store.append("en", [{"type": "setup", "how": "custom", "focus_own": "фразовые глаголы для работы", "topic": "any"}])
+    lp.store.append("en", [{"type": "setup", "how": "last", "focus": "grammar", "topic": "games"}])
+    lp.store.append("en", [{"type": "setup", "how": "lemur"}])
+    async with client() as c:
+        r = (await c.get("/admin/api/setups", headers=admin)).json()
+    assert r["how"] == {"custom": 2, "lemur": 1, "last": 1} and r["total"] == 4
+    assert r["focus"][0] == {"key": "grammar", "title": "Грамматика", "n": 1}  # «как в прошлый раз» not counted again
+    assert {(o["what"], o["text"]) for o in r["own"]} == {("Конкретно", "Dota 2"), ("Что подтянуть", "фразовые глаголы для работы")}

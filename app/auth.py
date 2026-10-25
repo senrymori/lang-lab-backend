@@ -42,7 +42,7 @@ EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MAX_ATTEMPTS = 5
 FINISH_WITHIN = timedelta(minutes=10)  # after the button is pressed, the app has this long to pick it up
 EXPIRED = "Ссылка и код устарели — запросите новое письмо"
-BLOCKED = "Доступ к Language Lab закрыт — напишите нам"
+BLOCKED = "Доступ к LangLab закрыт — напишите нам"
 COOKIE = "langlab_session"
 
 
@@ -94,12 +94,12 @@ def _consent_html() -> str:
 
 def _letter(purpose: str, name: str, digits: str, link: str) -> tuple[str, str, str]:
     hello = f"Здравствуйте, {name}!" if name else "Здравствуйте!"
-    what = "подтвердить адрес и начать заниматься" if purpose == "register" else "войти в Language Lab"
+    what = "подтвердить адрес и начать заниматься" if purpose == "register" else "войти в LangLab"
     new = purpose == "register"
-    subject = f"Код для входа в Language Lab: {digits}"
+    subject = f"Код для входа в LangLab: {digits}"
     text = (f"{hello}\n\nЧтобы {what}, откройте ссылку и нажмите «Войти»:\n{link}\n\n"
             f"Или введите в приложении код: {digits}\n\n"
-            f"Ссылка и код действуют {settings.login_minutes} минут. Если вы не входили в Language Lab — "
+            f"Ссылка и код действуют {settings.login_minutes} минут. Если вы не входили в LangLab — "
             "просто не обращайте внимания на это письмо."
             + (f"\n\n{CONSENT}: {settings.privacy_url}" if new else ""))
     html_ = f"""<div style="font-family:Inter,-apple-system,Segoe UI,Roboto,sans-serif;max-width:480px;margin:0 auto;
@@ -111,7 +111,7 @@ padding:12px 28px;border-radius:14px;font-weight:600;font-size:16px">Войти<
 <p style="font-size:16px">Или введите в приложении код:</p>
 <p style="font-size:32px;font-weight:700;letter-spacing:6px;margin:8px 0 24px">{digits}</p>
 <p style="font-size:13px;color:#666">Ссылка и код действуют {settings.login_minutes} минут. Если вы не входили
-в Language Lab — просто не обращайте внимания на это письмо.</p>{_consent_html() if new else ""}</div>"""
+в LangLab — просто не обращайте внимания на это письмо.</p>{_consent_html() if new else ""}</div>"""
     return subject, text, html_
 
 
@@ -120,7 +120,7 @@ APP_LINK = "langlab://signed-in"  # the desktop app's scheme (lp desktop/main.js
 
 def _page(title: str, body: str) -> HTMLResponse:
     return HTMLResponse(f"""<!doctype html><html lang="ru"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>{title} — Language Lab</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>{title} — LangLab</title>
 <style>
 :root{{--bg:#000;--card:rgba(44,44,52,.6);--text:#fff;--muted:#9a9aa6;--accent:#4116C9}}
 body{{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);
@@ -225,7 +225,7 @@ async def start(body: Start, request: Request, s: AsyncSession = Depends(get_db)
 @router.get("/auth/link", response_class=HTMLResponse)
 async def link_page(t: str = ""):
     """Only a button: opening the link changes nothing."""
-    return _page("Вход в Language Lab", f"""<p>Нажмите, чтобы войти в приложении.</p>
+    return _page("Вход в LangLab", f"""<p>Нажмите, чтобы войти в приложении.</p>
 <form method="post" action="/auth/link"><input type="hidden" name="t" value="{html.escape(t)}">
 <button type="submit">Войти</button></form>""")
 
@@ -239,11 +239,11 @@ async def link_confirm(t: str = Form(""), s: AsyncSession = Depends(get_db)):
                           .values(approved_at=now).returning(LoginRequest.id))).first()
     await s.commit()
     if ok:  # the app's own link brings it to the front (or starts it), and it finishes signing in by itself
-        return _page("Готово", f"""<p>Открываем Language Lab — вход выполнится сам.</p>
+        return _page("Готово", f"""<p>Открываем LangLab — вход выполнится сам.</p>
 <a class="btn" href="{APP_LINK}">Открыть приложение</a><script>location.href = "{APP_LINK}"</script>""")
     r = (await s.execute(select(LoginRequest).where(LoginRequest.link == _hash(t)))).scalar_one_or_none()
     if r and r.approved_at:
-        return _page("Вход уже подтверждён", "<p>Вернитесь в приложение Language Lab.</p>")
+        return _page("Вход уже подтверждён", "<p>Вернитесь в приложение LangLab.</p>")
     return _page("Ссылка устарела", "<p>Запросите новое письмо в приложении.</p>")
 
 
@@ -328,9 +328,9 @@ def invite_letter(name: str, code: str, link: str) -> tuple[str, str, str]:
     """`link` — our page, which hands the token to the app; `code` — the same invite typed by hand."""
     hello = f"Здравствуйте, {name}!" if name else "Здравствуйте!"
     get = f"Скачайте приложение: {settings.download_url}\n" if settings.download_url else ""
-    subject = "Приглашение в Language Lab"
-    text = (f"{hello}\n\nВас пригласили в Language Lab — репетитора {LANGUAGES}.\n\n"
-            f"{get}Чтобы начать, откройте ссылку на этом Mac и нажмите «Открыть Language Lab»:\n{link}\n\n"
+    subject = "Приглашение в LangLab"
+    text = (f"{hello}\n\nВас пригласили в LangLab — репетитора {LANGUAGES}.\n\n"
+            f"{get}Чтобы начать, откройте ссылку на этом Mac и нажмите «Открыть LangLab»:\n{link}\n\n"
             f"Или откройте приложение и введите код приглашения: {code}\nВойти нужно с этой почты.\n\n"
             f"{CONSENT}: {settings.privacy_url}")
     dl = (f'<p style="font-size:16px">Сначала скачайте приложение: <a href="{html.escape(settings.download_url)}" '
@@ -338,7 +338,7 @@ def invite_letter(name: str, code: str, link: str) -> tuple[str, str, str]:
     html_ = f"""<div style="font-family:Inter,-apple-system,Segoe UI,Roboto,sans-serif;max-width:480px;margin:0 auto;
 padding:24px;color:#111">
 <p style="font-size:16px">{html.escape(hello)}</p>
-<p style="font-size:16px">Вас пригласили в Language Lab — репетитора {LANGUAGES}.</p>{dl}
+<p style="font-size:16px">Вас пригласили в LangLab — репетитора {LANGUAGES}.</p>{dl}
 <p style="font-size:16px">Откройте на своём Mac:</p>
 <p><a href="{html.escape(link)}" style="display:inline-block;background:#4116C9;color:#fff;text-decoration:none;
 padding:12px 28px;border-radius:14px;font-weight:600;font-size:16px">Начать</a></p>
@@ -355,8 +355,8 @@ async def invite_page(t: str = ""):
     get = (f'<p>Нет приложения? <a href="{html.escape(settings.download_url)}" style="color:#a28bff">Скачайте его</a>, '
            "установите и нажмите кнопку ещё раз.</p>") if settings.download_url else \
         "<p>Если ничего не открылось — установите приложение и нажмите ещё раз.</p>"
-    return _page("Приглашение в Language Lab", f"""<p>Нажмите, чтобы открыть приложение и начать.</p>
-<a class="btn" href="{INVITE_LINK}{html.escape(t)}">Открыть Language Lab</a>{get}""")
+    return _page("Приглашение в LangLab", f"""<p>Нажмите, чтобы открыть приложение и начать.</p>
+<a class="btn" href="{INVITE_LINK}{html.escape(t)}">Открыть LangLab</a>{get}""")
 
 
 @router.post("/auth/invite")

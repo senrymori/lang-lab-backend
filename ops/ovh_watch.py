@@ -1,4 +1,4 @@
-"""Watch OVH stock for a server that fits Language Lab, in Europe: cheap configurations come and go for
+"""Watch OVH stock for a server that fits LangLab, in Europe: cheap configurations come and go for
 days. Run every 10 minutes (launchd, ops/uk.langlab.ovh-watch.plist); a configuration that turns up is
 announced once — a macOS notification and a letter through Resend — and again only after it has gone.
 
@@ -59,7 +59,7 @@ def notify(to: str, lines: list[str]) -> None:
     subprocess.run(["osascript", "-e", f'display notification "{lines[0][:120]}" with title "OVH: есть сервер"'],
                    check=False)
     if KEY.is_file():
-        body = json.dumps({"from": "Language Lab <login@mail.langlab.uk>", "to": [to],
+        body = json.dumps({"from": "LangLab <login@mail.langlab.uk>", "to": [to],
                            "subject": f"OVH: появился сервер — {lines[0][:60]}", "text": text}).encode()
         req = urllib.request.Request("https://api.resend.com/emails", data=body, method="POST", headers={
             "Authorization": f"Bearer {KEY.read_text().strip()}", "Content-Type": "application/json",

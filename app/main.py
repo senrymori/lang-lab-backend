@@ -1,4 +1,4 @@
-"""Language Lab server. Run (dev): uv run uvicorn app.main:app --reload
+"""LangLab server. Run (dev): uv run uvicorn app.main:app --reload
 
 Its own routes (sign-in, /me, /health) come first; everything else is the learning core's app (`lp`:
 its API and the tutor's WebSocket), mounted at the root under this server's sign-in. lp's page is not
@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI):
     stop_dev_db()  # dev only: the Postgres from var/pg goes down with the server
 
 
-app = FastAPI(title="Language Lab", lifespan=lifespan)
+app = FastAPI(title="LangLab", lifespan=lifespan)
 
 
 @app.middleware("http")

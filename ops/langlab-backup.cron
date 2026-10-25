@@ -1,2 +1,2 @@
-# nightly backup of Language Lab (ops/backup.sh), 03:30 UTC
+# nightly backup of LangLab (ops/backup.sh), 03:30 UTC
 30 3 * * * root /opt/langlab/lang-lab-backend/ops/backup.sh >> /var/log/langlab-backup.log 2>&1

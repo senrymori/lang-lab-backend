@@ -25,7 +25,7 @@ class Settings(BaseSettings):
 
     # letters: resend | console | memory (tests); auto — resend when a key is found, else console
     mail_backend: str = "auto"
-    mail_from: str = "Language Lab <login@mail.langlab.uk>"
+    mail_from: str = "LangLab <login@mail.langlab.uk>"
     privacy_url: str = "https://langlab.uk/privacy/"  # the privacy policy: named in the letters that make an account
     download_url: str = ""  # where the app is downloaded from, for the invite letter (none yet: the letter skips it)
     resend_key: str | None = None
@@ -81,7 +81,7 @@ class Settings(BaseSettings):
     azure_free_chars_month: int = 500_000
     letters_day_limit: int = 100
     letters_month_limit: int = 3000
-    # what Language Lab costs every month regardless of lessons, only shown in the admin as a reminder (USD a month;
+    # what LangLab costs every month regardless of lessons, only shown in the admin as a reminder (USD a month;
     # None — not set yet; until — when it runs out or renews):
     # LANGLAB_FIXED_COSTS='[{"name": "…", "usd_month": 12, "note": "…", "until": "2027-10-23"}]'
     fixed_costs: list[dict] = [

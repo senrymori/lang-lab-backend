@@ -117,11 +117,11 @@ async def google_callback(state: str = "", code: str = "", error: str = "", s: A
     else:
         await s.execute(update(LoginRequest).where(LoginRequest.id == r.id).values(expires_at=now))
         await s.commit()
-        return _page("Сначала код приглашения", f"""<p>{email} ещё не зарегистрирован в Language Lab. Вернитесь в
+        return _page("Сначала код приглашения", f"""<p>{email} ещё не зарегистрирован в LangLab. Вернитесь в
 приложение и сначала введите код приглашения.</p>""")
     await s.execute(update(LoginRequest).where(LoginRequest.id == r.id)
                     .values(email=email, purpose=purpose, name=str(name)[:80], approved_at=now))
     await s.commit()
-    return _page("Готово", f"""<p>Открываем Language Lab — вход выполнится сам.</p>
+    return _page("Готово", f"""<p>Открываем LangLab — вход выполнится сам.</p>
 <a class="btn" href="{APP_LINK}">Открыть приложение</a><script>location.href = "{APP_LINK}"</script>""")
 

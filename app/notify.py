@@ -23,8 +23,8 @@ CONTACT = "hello@langlab.uk"
 def policy_letter(name: str, changes: str, start: date | None) -> tuple[str, str, str]:
     hello = f"Здравствуйте, {name}!" if name else "Здравствуйте!"
     when = f" Изменения вступают в силу {start.strftime('%d.%m.%Y')}." if start else ""
-    subject = "Language Lab обновил политику конфиденциальности"
-    text = (f"{hello}\n\nМы обновили политику конфиденциальности Language Lab.{when}\n\nЧто изменилось:\n{changes}\n\n"
+    subject = "LangLab обновил политику конфиденциальности"
+    text = (f"{hello}\n\nМы обновили политику конфиденциальности LangLab.{when}\n\nЧто изменилось:\n{changes}\n\n"
             f"Полный текст: {settings.privacy_url}\n\nЕсли вы согласны — ничего делать не нужно. Если нет — напишите "
             f"на {CONTACT}, и мы удалим ваш аккаунт и все данные.")
     paras = "".join(f'<p style="font-size:16px">{html.escape(p)}</p>' for p in changes.split("\n") if p.strip())
@@ -32,7 +32,7 @@ def policy_letter(name: str, changes: str, start: date | None) -> tuple[str, str
     html_ = f"""<div style="font-family:Inter,-apple-system,Segoe UI,Roboto,sans-serif;max-width:480px;margin:0 auto;
 padding:24px;color:#111">
 <p style="font-size:16px">{html.escape(hello)}</p>
-<p style="font-size:16px">Мы обновили политику конфиденциальности Language Lab.{html.escape(when)}</p>
+<p style="font-size:16px">Мы обновили политику конфиденциальности LangLab.{html.escape(when)}</p>
 <p style="font-size:16px;font-weight:600">Что изменилось:</p>{paras}
 <p style="font-size:16px">Полный текст: <a href="{url}" style="color:#4116C9">{url}</a></p>
 <p style="font-size:13px;color:#666">Если вы согласны — ничего делать не нужно. Если нет — напишите на

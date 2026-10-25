@@ -124,3 +124,25 @@ async def test_feedback_by_learner_and_language(admin):
     assert len(mine) == 1 and mine[0]["lang"] == "es" and mine[0]["level"].startswith("B1") and mine[0]["rating"] == 4
     modes = {i["sid"]: i["mode"] for i in mine[0]["items"]}
     assert modes == {"p1": "placement", "l1": "learn"}
+
+
+async def test_a_lesson_over_is_not_on_a_lesson_and_one_stepped_away_is_paused(admin):
+    """The server keeps sessions until a restart: one over doesn't count as «on a lesson»; one going without the
+    learner at it (the app closed) is «paused»."""
+    from types import SimpleNamespace
+
+    from lp import server
+    (_, over), (_, away) = await learner("Гриша"), await learner("Алмаз")
+    sessions = {f"{over.id}/en": SimpleNamespace(mode="placement", presence=lambda: None),
+                f"{away.id}/en": SimpleNamespace(mode="placement", presence=lambda: {"state": "paused", "why": "app"})}
+    server.sessions.update(sessions)
+    try:
+        async with client() as c:
+            o = (await c.get("/admin/api/overview", headers=admin)).json()
+            assert o["live_lessons"] == 0 and o["paused_lessons"] == 1
+            rows = {x["id"]: x for x in (await c.get("/admin/api/learners", headers=admin)).json()}
+        assert rows[str(over.id)]["live"] is None and rows[str(over.id)]["presence"] is None
+        assert rows[str(away.id)]["live"] == "placement" and rows[str(away.id)]["presence"]["why"] == "app"
+    finally:
+        for k in sessions:
+            server.sessions.pop(k, None)

@@ -60,7 +60,10 @@ async def overview(s: AsyncSession = Depends(get_db)):
         Usage.service == service, Usage.day >= since)
     from lp import server
     return {"learners": {k: n for k, n in learners}, "max_learners": settings.max_learners,
-            "spent_today_usd": float(today), "spent_month_usd": float(this_month), "live_lessons": len(server.sessions),
+            "spent_today_usd": float(today), "spent_month_usd": float(this_month),
+            # sessions the server holds, over ones too (until a restart): only those going count, live or paused
+            "live_lessons": sum(1 for o in server.sessions.values() if (p := o.presence()) and p["state"] == "live"),
+            "paused_lessons": sum(1 for o in server.sessions.values() if (p := o.presence()) and p["state"] == "paused"),
             "requests": asking, "services_month": {k: float(v) for k, v in by_service},
             "allowances": {"azure_chars_month": int(await s.scalar(used("azure_chars", month))),
                            "azure_chars_limit": settings.azure_free_chars_month,
@@ -84,11 +87,14 @@ async def learners(s: AsyncSession = Depends(get_db)):
         .outerjoin(seen, seen.c.learner_id == Learner.id).outerjoin(spend, spend.c.learner_id == Learner.id)
         .order_by(Learner.created_at))).all()
     from lp import server
-    live = {k.split("/")[0]: s_.mode for k, s_ in server.sessions.items()}
+    # a lesson going (live or paused) — not one over or wrapping up without the learner
+    live = {k.split("/")[0]: (s_.mode, p) for k, s_ in server.sessions.items() if (p := s_.presence())}
     return [{"id": str(l.id), "email": l.email, "name": l.name, "status": l.status, "code": l.code,
              "lessons_total": l.lessons_total, "lessons_used": l.lessons_used, "access_until": l.access_until, "created_at": l.created_at, "last_seen_at": seen_at,
              "spent_today_usd": float(today or 0), "spent_30d_usd": float(d30 or 0), "spent_total_usd": float(total or 0),
-             "blocked_reason": l.blocked_reason, "blocked_at": l.blocked_at, "live": live.get(str(l.id))}
+             "blocked_reason": l.blocked_reason, "blocked_at": l.blocked_at,
+             "live": live[str(l.id)][0] if str(l.id) in live else None,
+             "presence": live[str(l.id)][1] if str(l.id) in live else None}
             for l, seen_at, today, d30, total in rows]
 
 
